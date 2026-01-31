@@ -9,17 +9,35 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// MCPServer describes a single MCP server endpoint.
+type MCPServer struct {
+	URL  string `yaml:"url"`
+	Type string `yaml:"type"` // e.g. "alertmanager", "grafana"
+}
+
 type Config struct {
 	ListenAddr        string `yaml:"listen_addr"`
 	GrafanaURL        string `yaml:"grafana_url"`
 	GrafanaToken      string `yaml:"grafana_token"`
 	DataRetentionDays int    `yaml:"data_retention_days"`
+
+	// Database path for SQLite (default: data/assistant.db).
+	DBPath string `yaml:"db_path"`
+
+	// OpenAI configuration.
+	OpenAIAPIKey string `yaml:"openai_api_key"`
+	OpenAIModel  string `yaml:"openai_model"`
+
+	// MCP servers.
+	MCPServers []MCPServer `yaml:"mcp_servers"`
 }
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		ListenAddr:        ":8080",
 		DataRetentionDays: 30,
+		DBPath:            "data/assistant.db",
+		OpenAIModel:       "gpt-4o",
 	}
 
 	data, err := os.ReadFile(path)
@@ -48,6 +66,15 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("invalid ASSISTANT_DATA_RETENTION_DAYS: %w", err)
 		}
 		cfg.DataRetentionDays = days
+	}
+	if v := os.Getenv("ASSISTANT_DB_PATH"); v != "" {
+		cfg.DBPath = v
+	}
+	if v := os.Getenv("ASSISTANT_OPENAI_API_KEY"); v != "" {
+		cfg.OpenAIAPIKey = v
+	}
+	if v := os.Getenv("ASSISTANT_OPENAI_MODEL"); v != "" {
+		cfg.OpenAIModel = v
 	}
 
 	if err := cfg.Validate(); err != nil {

@@ -18,6 +18,9 @@
 - Grafana can be embedded or proxied to allow iframe usage.
 - Service account token available for Grafana API access (dashboard JSON).
 
+## INFO
+- Grafana test instance is on http://127.0.0.1:3000
+
 ---
 
 ## Phased Roadmap
@@ -39,13 +42,26 @@
 - `internal/storage/storage.go` — `Store` interface stub
 - `docs/GRAFANA_CONFIG.md` — Grafana configuration requirements
 
-### Phase 1 — Foundation
+### Phase 1 — Foundation (Completed)
 - Go project scaffolding: module init, directory layout, config loader (env + file), structured logging (`slog`), health endpoints.
 - Storage interface + initial SQLite implementation (chat history, sessions).
 - Grafana API client (service account token auth) — fetch `/api/user`, `/api/dashboards/uid/:uid`.
 - Session-aware user resolution via proxied Grafana session cookie.
 - Basic unit test harness.
 - **Artifact schema contract tests** — round-trip JSON marshal/unmarshal tests for `ArtifactData`, `StreamChunk`, `ChatRequest`, and `ChatResponse` against canonical examples from `docs/ARTIFACT_SCHEMA.md`. Prevents UI/backend drift.
+
+**Completed artifacts:**
+- `internal/storage/storage.go` — `Store` interface with sessions, messages, and purge methods
+- `internal/storage/sqlite.go` + `sqlite_test.go` — SQLite implementation with WAL mode, auto-migration, cascade deletes (4 tests)
+- `internal/grafana/client.go` + `client_test.go` — Grafana API client: `GetCurrentUser`, `ResolveUserFromSession`, `GetDashboard` (4 tests)
+- `internal/auth/session.go` + `session_test.go` — Session resolver: extracts cookies from request, resolves Grafana user (2 tests)
+- `internal/llm/openai.go` — OpenAI client with streaming (ported from reference, adapted for direct OpenAI API)
+- `internal/mcp/client.go` — MCP HTTP client with JSON-RPC, tool discovery, retry logic (ported from reference)
+- `internal/mcp/formatter.go` + `formatter_test.go` — Tool result formatting for LLM consumption (5 tests)
+- `internal/api/types_test.go` — Artifact schema contract tests: round-trip JSON for all types against canonical examples (8 tests)
+- `internal/config/config.go` — Extended with `db_path`, `openai_api_key`, `openai_model`, `mcp_servers` fields
+- `cmd/assistant/main.go` — Updated with SQLite init, Grafana client setup, graceful shutdown (signal handling)
+- `config.example.yaml` — Updated with all new configuration fields
 
 **Reuse from reference projects:**
 | What | Source | Target |
@@ -71,7 +87,7 @@
 | Dashboard context extraction | `app_roadmap_discussion.md` `extractDashboardContext()` | `internal/context/parser.go` |
 | Dashboard JSON enrichment | `app_roadmap_discussion.md` `enrichContextFromDashboard()` | `internal/context/enricher.go` |
 
-### Phase 3 — Wrapper UI
+### Phase 3 — Wrapper UI (Completed)
 - React + TypeScript app, built to static assets and embedded in Go binary via `embed`.
 - Layout: full-height flex container — Grafana iframe + sliding chat sidebar (0px to 400px push).
 - Context parser reads iframe URL for dashboard UID, time range, template variables.
@@ -91,6 +107,15 @@
 | Chat panel patterns (streaming, tool calls) | `grafana-chat-plugin/src/components/ChatPanel.tsx` | `frontend/src/components/ChatPanel.tsx` |
 | API client patterns | `grafana-chat-plugin/src/services/api.ts` | `frontend/src/services/api.ts` |
 | Wrapper HTML/CSS layout (iframe + sidebar) | `app_roadmap_discussion.md` `serveWrapper()` | Design reference for React layout |
+
+**Completed artifacts:**
+- `frontend/` — Vite + React + TypeScript wrapper UI (chat sidebar, iframe layout, SSE streaming client)
+- `frontend/src/components/Artifact.tsx` — artifact renderer (charts, tables, metric cards, reports)
+- `frontend/src/components/MarkdownContent.tsx` — markdown renderer
+- `frontend/src/components/ChatPanel.tsx` — chat UI + tool call display + demo artifact
+- `frontend/src/services/api.ts` — SSE streaming client for `POST /api/chat`
+- `frontend/src/utils/dashboard.ts` — URL context parsing (uid, time range, variables)
+- `cmd/assistant/main.go` — embeds and serves `static/` assets with SPA fallback
 
 ### Phase 4 — Assistant Core
 - Chat API `POST /api/chat` with SSE streaming.
@@ -229,7 +254,7 @@ monitoring-assistant/
 
 ## Milestone Exit Criteria
 - **Phase 0**: Architecture finalized; Grafana config changes documented (`docs/GRAFANA_CONFIG.md`); data retention defined (30 days); storage choice confirmed (SQLite); artifact schema formalized (`docs/ARTIFACT_SCHEMA.md`); proxy spike validates (reverse proxy works, strips headers, passes cookies — covered by `internal/proxy/grafana_test.go`).
-- **Phase 1**: Go binary starts, loads config, connects to SQLite, health endpoint responds, Grafana user can be resolved.
+- **Phase 1**: Go binary starts, loads config, connects to SQLite, health endpoint responds, Grafana user can be resolved. ✓ All 22 tests pass.
 - **Phase 2**: Grafana loads in iframe via reverse proxy, user is authenticated, dashboard JSON fetched and minified.
 - **Phase 3**: Wrapper UI renders, chat sidebar opens/closes, context extracted from URL, artifacts render with sample data.
 - **Phase 4**: Streaming chat with OpenAI works end-to-end, dashboard context in prompts, MCP tools execute, artifacts render from LLM.

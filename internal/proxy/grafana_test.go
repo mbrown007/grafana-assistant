@@ -96,7 +96,7 @@ func TestCookiePassthrough(t *testing.T) {
 	}
 }
 
-func TestPathStripping(t *testing.T) {
+func TestPathPassthrough(t *testing.T) {
 	var receivedPath string
 	fakeGrafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedPath = r.URL.Path
@@ -117,7 +117,8 @@ func TestPathStripping(t *testing.T) {
 
 	http.Get(srv.URL + "/d/abc123/my-dashboard")
 
-	if receivedPath != "/d/abc123/my-dashboard" {
-		t.Errorf("expected path /d/abc123/my-dashboard, got %q", receivedPath)
+	// Path keeps the /grafana prefix because Grafana is configured with serve_from_sub_path=true.
+	if receivedPath != "/grafana/d/abc123/my-dashboard" {
+		t.Errorf("expected path /grafana/d/abc123/my-dashboard, got %q", receivedPath)
 	}
 }

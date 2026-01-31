@@ -1,11 +1,16 @@
 # Monitoring Assistant configuration
 # Environment variable overrides: ASSISTANT_LISTEN_ADDR, ASSISTANT_GRAFANA_URL,
-# ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS
+# ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS, ASSISTANT_DB_PATH,
+# ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL
 
 # Address to listen on (host:port)
 listen_addr: ":8080"
 
-# Grafana base URL (required)
+# Grafana base URL (required).
+# Grafana must be configured with serve_from_sub_path=true and
+# root_url pointing to this app's /grafana/ path, e.g.:
+#   GF_SERVER_ROOT_URL=http://localhost:8080/grafana/
+#   GF_SERVER_SERVE_FROM_SUB_PATH=true
 grafana_url: "http://localhost:3000"
 
 # Grafana service account token (for API access to dashboards)
@@ -13,3 +18,19 @@ grafana_url: "http://localhost:3000"
 
 # Number of days to retain chat history (default: 30)
 data_retention_days: 30
+
+# SQLite database path (default: data/assistant.db)
+db_path: "data/assistant.db"
+
+# OpenAI API key (required for chat assistant)
+# openai_api_key: "sk-..."
+
+# OpenAI model (default: gpt-4o)
+openai_model: "gpt-4o"
+
+# MCP servers for tool integration
+# mcp_servers:
+#   - url: "http://localhost:8081"
+#     type: "alertmanager"
+#   - url: "http://localhost:8082"
+#     type: "grafana"

@@ -46,6 +46,7 @@ type StreamChunk struct {
 	Type      string                 `json:"type"`
 	Message   string                 `json:"message,omitempty"`
 	Tool      string                 `json:"tool,omitempty"`
+	ToolID    string                 `json:"tool_id,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
 	Result    interface{}            `json:"result,omitempty"`
 }

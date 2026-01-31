@@ -4,24 +4,18 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
 )
 
 // NewGrafanaProxy creates a reverse proxy that forwards requests to Grafana,
 // stripping headers that prevent iframe embedding and passing cookies through.
+// The /grafana prefix is kept on the forwarded path because Grafana is configured
+// with serve_from_sub_path=true and root_url including /grafana/.
 func NewGrafanaProxy(target *url.URL) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-
-		// Strip the /grafana prefix before forwarding
-		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/grafana")
-		if req.URL.Path == "" {
-			req.URL.Path = "/"
-		}
-
 		req.Host = target.Host
 	}
 

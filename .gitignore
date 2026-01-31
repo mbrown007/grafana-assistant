@@ -1,4 +1,5 @@
 # Binaries
+/assistant
 bin/
 *.exe
 *.exe~
@@ -11,9 +12,10 @@ bin/
 *.out
 vendor/
 
-# Environment
+# Environment and local config
 .env
 .env.*
+config.yaml
 
 # SQLite
 *.db
@@ -21,8 +23,9 @@ vendor/
 *.db-wal
 *.db-shm
 
-# Built frontend assets
-static/
+# Built frontend assets (keep .gitkeep for go:embed)
+cmd/assistant/static/*
+!cmd/assistant/static/.gitkeep
 
 # Node
 node_modules/
