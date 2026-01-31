@@ -1,0 +1,15 @@
+# Monitoring Assistant configuration
+# Environment variable overrides: ASSISTANT_LISTEN_ADDR, ASSISTANT_GRAFANA_URL,
+# ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS
+
+# Address to listen on (host:port)
+listen_addr: ":8080"
+
+# Grafana base URL (required)
+grafana_url: "http://localhost:3000"
+
+# Grafana service account token (for API access to dashboards)
+# grafana_token: "glsa_..."
+
+# Number of days to retain chat history (default: 30)
+data_retention_days: 30

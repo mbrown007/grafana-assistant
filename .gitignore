@@ -1,0 +1,42 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+vendor/
+
+# Environment
+.env
+.env.*
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Built frontend assets
+static/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Reference apps (large, not part of this project)
+example_apps_for_reference/
+
+# OS
+.DS_Store
+Thumbs.db
