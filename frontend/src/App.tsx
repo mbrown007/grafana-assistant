@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChatPanel } from './components/ChatPanel';
 import type { DashboardContext } from './types';
 import { parseDashboardUrl } from './utils/dashboard';
+import chatLauncher from './assets/chat_with_agent.png';
 
 const GRAFANA_PATH = '/grafana/';
 const CONTEXT_POLL_INTERVAL_MS = 2500;
@@ -17,7 +18,6 @@ export function App() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dashboardContext, setDashboardContext] = useState<DashboardContext | undefined>();
-  const [contextStatus, setContextStatus] = useState('Waiting for dashboard');
   const lastUrlRef = useRef<string>('');
 
   useEffect(() => {
@@ -25,13 +25,8 @@ export function App() {
     const updateContextFromUrl = async (rawUrl: string) => {
       const parsed = parseDashboardUrl(rawUrl);
       if (!parsed) {
-        if (isMounted) {
-          setContextStatus('No dashboard detected');
-        }
         return;
       }
-
-      setContextStatus('Loading dashboard context');
 
       let summary: DashboardSummaryResponse | null = null;
       try {
@@ -59,7 +54,6 @@ export function App() {
         variables: parsed.variables,
       });
 
-      setContextStatus(`Dashboard ${summary?.title ?? parsed.uid}`);
     };
 
     const interval = window.setInterval(() => {
@@ -91,27 +85,23 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-badge">MA</span>
-          <div>
-            <div className="brand-title">Monitoring Assistant</div>
-            <div className="brand-subtitle">Grafana wrapper + chat</div>
-          </div>
-        </div>
-        <div className="header-controls">
-          <div className="context-pill">{contextStatus}</div>
-          <button className="toggle-button" onClick={() => setSidebarOpen((prev) => !prev)}>
-            {sidebarOpen ? 'Hide Chat' : 'Show Chat'}
-          </button>
-        </div>
-      </header>
       <main className="app-main">
         <section className="grafana-pane">
           <iframe ref={iframeRef} title="Grafana" src={GRAFANA_PATH} />
+          {!sidebarOpen && (
+            <button
+              type="button"
+              className="chat-launcher"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Show chat"
+              title="Show chat"
+            >
+              <img src={chatLauncher} alt="Chat with agent" />
+            </button>
+          )}
         </section>
         <aside className={`chat-pane ${sidebarOpen ? 'open' : 'closed'}`}>
-          <ChatPanel dashboardContext={dashboardContext} />
+          <ChatPanel dashboardContext={dashboardContext} onHide={() => setSidebarOpen(false)} />
         </aside>
       </main>
     </div>

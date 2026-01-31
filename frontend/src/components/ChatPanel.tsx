@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, Sparkles, Wrench } from 'lucide-react';
-import type { DashboardContext, Message, ToolCall } from '../types';
-import { chatApi } from '../services/api';
+import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, X } from 'lucide-react';
+import type { DashboardContext, HistorySession, Message, ToolCall } from '../types';
+import { chatApi, historyApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
 
 interface ChatPanelProps {
   dashboardContext?: DashboardContext;
+  onHide?: () => void;
 }
 
 const SUGGESTIONS = [
@@ -15,48 +16,16 @@ const SUGGESTIONS = [
   'Which panels look risky right now?'
 ];
 
-const SAMPLE_ARTIFACT = `Here is a quick snapshot based on the current dashboard context.
-
-\`\`\`artifact
-{
-  "type": "report",
-  "title": "Daily Monitoring Summary",
-  "subtitle": "2026-01-31",
-  "sections": [
-    {
-      "type": "summary",
-      "title": "Executive Summary",
-      "content": "Latency is stable overall, but error spikes appear in the EU region during the last hour."
-    },
-    {
-      "type": "metrics",
-      "metrics": [
-        { "label": "Active Alerts", "value": 4, "icon": "alert", "color": "red" },
-        { "label": "p95 Latency", "value": "310ms", "icon": "activity", "color": "amber" },
-        { "label": "Healthy Services", "value": "11/12", "icon": "server", "color": "green" }
-      ]
-    },
-    {
-      "type": "chart",
-      "title": "Error Rate (last 6h)",
-      "chartType": "line",
-      "data": [
-        { "name": "00:00", "errors": 12 },
-        { "name": "02:00", "errors": 9 },
-        { "name": "04:00", "errors": 22 },
-        { "name": "06:00", "errors": 15 }
-      ]
-    }
-  ]
-}
-\`\`\`
-`;
-
-export function ChatPanel({ dashboardContext }: ChatPanelProps) {
+export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId] = useState(() => `session-${Date.now()}`);
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const contextLabel = useMemo(() => {
@@ -82,6 +51,70 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
   const appendMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
   }, []);
+
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setSessionId(undefined);
+    setShowHistory(false);
+    setShowMenu(false);
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const items = await historyApi.list();
+      setHistoryItems(items);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const openHistory = useCallback(() => {
+    setShowHistory(true);
+    setShowMenu(false);
+  }, []);
+
+  const handleSelectHistory = useCallback(async (session: HistorySession) => {
+    try {
+      const detail = await historyApi.get(session.id);
+      const loadedMessages: Message[] = detail.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.created_at,
+      }));
+      setMessages(loadedMessages);
+      setSessionId(detail.session.id);
+      setShowHistory(false);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load chat');
+    }
+  }, []);
+
+  const handleDeleteHistory = useCallback(
+    async (session: HistorySession) => {
+      try {
+        await historyApi.remove(session.id);
+        setHistoryItems((prev) => prev.filter((item) => item.id !== session.id));
+        if (sessionId === session.id) {
+          startNewChat();
+        }
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : 'Failed to delete chat');
+      }
+    },
+    [sessionId, startNewChat]
+  );
+
+  useEffect(() => {
+    if (!showHistory) {
+      return;
+    }
+    void loadHistory();
+  }, [showHistory, loadHistory]);
 
   const sendMessage = useCallback(
     async (messageText: string) => {
@@ -120,6 +153,10 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
           session_id: sessionId,
           dashboard_context: dashboardContext,
         })) {
+          if (chunk.type === 'start' && chunk.session_id) {
+            setSessionId(chunk.session_id);
+          }
+
           if (chunk.type === 'token' && chunk.message) {
             accumulated += chunk.message;
             setMessages((prev) =>
@@ -171,7 +208,7 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
             msg.id === assistantId
               ? {
                   ...msg,
-                  content: 'The chat service is not available yet. Try again after Phase 4 is implemented.',
+                  content: `Error: ${error instanceof Error ? error.message : 'Something went wrong. Check that the server is running.'}`,
                   isStreaming: false,
                 }
               : msg
@@ -193,17 +230,6 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
     setInput(suggestion);
   };
 
-  const handleDemo = () => {
-    const demoMessage: Message = {
-      id: `${Date.now()}-demo`,
-      role: 'assistant',
-      content: SAMPLE_ARTIFACT,
-      timestamp: new Date().toISOString(),
-      isStreaming: false,
-    };
-    appendMessage(demoMessage);
-  };
-
   return (
     <div className="chat-panel">
       <div className="chat-header">
@@ -211,10 +237,34 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
           <div className="chat-title">Assistant</div>
           <div className="chat-subtitle">{contextLabel}</div>
         </div>
-        <button className="ghost-button" onClick={handleDemo} type="button">
-          <Sparkles size={16} />
-          Load demo
-        </button>
+        <div className="chat-header-actions">
+          <button
+            type="button"
+            className="hide-chat-button"
+            onClick={onHide}
+            disabled={!onHide}
+          >
+            Hide chat
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => setShowMenu((prev) => !prev)}
+            aria-label="Chat menu"
+          >
+            <MoreVertical size={16} />
+          </button>
+          {showMenu && (
+            <div className="chat-menu">
+              <button type="button" onClick={startNewChat}>
+                <Plus size={14} /> New chat
+              </button>
+              <button type="button" onClick={openHistory}>
+                <History size={14} /> Previous chats
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="chat-messages">
@@ -304,6 +354,55 @@ export function ChatPanel({ dashboardContext }: ChatPanelProps) {
           {isLoading ? <Loader2 size={16} /> : <Send size={16} />}
         </button>
       </form>
+
+      <div className={`history-panel ${showHistory ? 'open' : ''}`}>
+        <div className="history-header">
+          <div>
+            <div className="history-title">Previous chats</div>
+            <div className="history-subtitle">Pick a conversation or delete it.</div>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => setShowHistory(false)}
+            aria-label="Close history"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="history-body">
+          {historyLoading ? (
+            <div className="history-status">Loading...</div>
+          ) : historyError ? (
+            <div className="history-status error">{historyError}</div>
+          ) : historyItems.length === 0 ? (
+            <div className="history-status">No previous chats yet.</div>
+          ) : (
+            <div className="history-list">
+              {historyItems.map((session) => {
+                const title = session.title || 'Untitled chat';
+                const when = new Date(session.updated_at).toLocaleString();
+                return (
+                  <div key={session.id} className="history-item">
+                    <button type="button" onClick={() => handleSelectHistory(session)}>
+                      <div className="history-item-title">{title}</div>
+                      <div className="history-item-meta">{when}</div>
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      onClick={() => handleDeleteHistory(session)}
+                      aria-label="Delete chat"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
