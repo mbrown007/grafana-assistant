@@ -1,12 +1,13 @@
 # Monitoring Assistant
 
-A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered chat sidebar. The assistant understands which dashboard you're viewing and can answer questions about panels, queries, and metrics.
+A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered chat sidebar. The assistant understands which dashboard you're viewing and can answer questions about panels, queries, and metrics. It connects to MCP tool servers to fetch live data from Alertmanager, Grafana APIs, and Genesys Cloud.
 
 ## Prerequisites
 
 - Go 1.25+
 - Node.js 18+ (for frontend build)
 - Docker (for the Grafana/OTEL-LGTM stack)
+- OpenAI API key
 
 ## Quick start
 
@@ -39,52 +40,129 @@ cp config.example.yaml config.yaml
 
 Edit `config.yaml` — at minimum set `grafana_url` and `listen_addr`. The defaults expect Grafana at `http://localhost:3000` and the assistant on `:8081`.
 
-### 3. Build the frontend
+Put secrets in `.env` (auto-loaded at startup, gitignored):
 
 ```bash
-cd frontend
-npm install
-npm run build
-cd ..
+ASSISTANT_OPENAI_API_KEY=sk-...
+ALERTMANAGER_URL=http://localhost:9093
+GRAFANA_URL=http://localhost:3000
+GRAFANA_USERNAME=admin
+GRAFANA_PASSWORD=admin
 ```
 
-This outputs static assets to `cmd/assistant/static/`, which are embedded into the Go binary.
-
-### 4. Run the server
+### 3. Install frontend dependencies (first time only)
 
 ```bash
-go run ./cmd/assistant -config config.yaml
+npm --prefix frontend install
 ```
 
-Open `http://localhost:8081/` — you should see Grafana in the main pane with a chat sidebar on the right.
-
-## Development
-
-For frontend development with hot reload, run the Go server and Vite dev server separately:
+### 4. Start everything
 
 ```bash
-# Terminal 1 — Go backend
-go run ./cmd/assistant -config config.yaml
-
-# Terminal 2 — Vite dev server (proxies /api and /grafana to the Go backend)
-cd frontend
-npm run dev
+make dev
 ```
 
-Then open `http://localhost:5173/`. The Vite proxy is configured to forward `/api/*` and `/grafana/*` to `http://localhost:8081` (override with `VITE_DEV_PROXY_TARGET` env var).
+This builds and starts the MCP servers, Go backend, and Vite frontend dev server. Open http://localhost:5173 in your browser.
+
+## Make Commands
+
+### Development
+
+| Command | Description |
+|---|---|
+| `make dev` | Build and start MCP servers + Go backend + Vite frontend |
+| `make dev-stop` | Stop all dev processes |
+| `make dev-restart` | Rebuild and restart everything |
+| `make dev-logs` | Tail all log files (backend, frontend, MCP servers) |
+
+### Build
+
+| Command | Description |
+|---|---|
+| `make build` | Build the Go backend binary to `bin/assistant` |
+| `make frontend-build` | Build frontend into `static/` for Go embedding |
+| `make package` | Build frontend + Go binary for single-file deploy |
+| `make mcp-build` | Build all MCP server binaries to `bin/` |
+
+### MCP Servers
+
+| Command | Description |
+|---|---|
+| `make mcp-start` | Build and start all MCP servers in SSE mode (background) |
+| `make mcp-stop` | Stop all MCP servers |
+
+The three MCP servers and their default ports:
+
+| Server | Port | Tools |
+|---|---|---|
+| Alertmanager | 8000 | Alerts, silences, receivers |
+| Grafana | 8001 | Dashboards, datasources, Prometheus queries, Loki logs |
+| Genesys Cloud | 8002 | Queue volumes, conversations, OAuth clients |
+
+Servers that fail to connect at startup are skipped -- the assistant still works without them.
+
+## Deployment
+
+For production packaging, run:
+
+```bash
+make package
+```
+
+This embeds the built frontend into the single `bin/assistant` binary. See
+`docs/DEPLOYMENT.md` for a systemd unit template, recommended layout, and
+network/security notes.
+
+### Other
+
+| Command | Description |
+|---|---|
+| `make run` | Build and run the backend in foreground |
+| `make test` | Run all Go tests |
+| `make lint` | Run golangci-lint |
+| `make clean` | Remove build artifacts |
+| `make help` | Show all available commands |
+
+## Architecture
+
+```
+Browser (localhost:5173)
+  |
+  +-- Vite dev server (proxies /api, /grafana to backend)
+        |
+        +-- Go backend (localhost:8081)
+              |
+              +-- /grafana/*     --> reverse proxy to Grafana
+              +-- /api/chat      --> SSE streaming chat (agent loop)
+              +-- /api/dashboard-context/{uid}
+              |
+              +-- MCP clients (SSE transport)
+                    +-- Alertmanager MCP (:8000)
+                    +-- Grafana MCP (:8001)
+                    +-- Genesys Cloud MCP (:8002)
+```
+
+The chat agent loop:
+1. Enriches dashboard context server-side (panels, queries)
+2. Builds a system prompt with context + available tools
+3. Calls the LLM (OpenAI) with streaming
+4. If the LLM requests tool calls, executes them via MCP and loops (max 5 iterations)
+5. Streams the final response as SSE chunks
+6. Persists conversation to SQLite
 
 ## Project structure
 
 ```
 cmd/assistant/          Go entrypoint + embedded static assets
 internal/
-  api/                  HTTP API types (chat request/response, stream chunks)
-  auth/                 Session resolver (cookie → Grafana user)
-  config/               YAML config loader with env var overrides
+  agent/                Agent orchestration, memory, prompts, tool routing
+  api/                  HTTP API types and SSE streaming handler
+  auth/                 Session resolver (cookie -> Grafana user)
+  config/               YAML config loader with env var overrides + .env support
   context/              Dashboard URL parser + enricher with TTL cache
   grafana/              Grafana API client (dashboards, users)
   llm/                  OpenAI streaming client
-  mcp/                  MCP server integration types
+  mcp/                  MCP client (SSE transport protocol)
   proxy/                Grafana reverse proxy (header stripping, cookie passthrough)
   storage/              SQLite storage for chat history
 frontend/               React + TypeScript + Vite
@@ -92,12 +170,16 @@ frontend/               React + TypeScript + Vite
     components/         ChatPanel, Artifact renderer, Markdown renderer
     services/           SSE streaming API client
     utils/              Dashboard URL parsing
+mcp_servers/
+  alertmanager-mcp-go/  AlertManager MCP server
+  mcp-grafana/          Grafana MCP server
+  genesys-cloud-mcp-go/ Genesys Cloud MCP server
 ```
 
 ## Tests
 
 ```bash
-go test ./...
+make test
 ```
 
 ## Grafana configuration notes

@@ -15,10 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/marcusz/monitoring-assistant/internal/agent"
+	"github.com/marcusz/monitoring-assistant/internal/api"
 	"github.com/marcusz/monitoring-assistant/internal/auth"
 	"github.com/marcusz/monitoring-assistant/internal/config"
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/marcusz/monitoring-assistant/internal/llm"
+	"github.com/marcusz/monitoring-assistant/internal/mcp"
 	"github.com/marcusz/monitoring-assistant/internal/proxy"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
@@ -68,6 +72,42 @@ func spaHandler() (http.Handler, error) {
 	}), nil
 }
 
+func startRetentionPurger(ctx context.Context, store storage.Store, days int) {
+	if days <= 0 {
+		return
+	}
+
+	purge := func() {
+		cutoff := time.Now().AddDate(0, 0, -days)
+		purgeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		deleted, err := store.PurgeOlderThan(purgeCtx, cutoff)
+		if err != nil {
+			slog.Warn("retention purge failed", "error", err)
+			return
+		}
+		if deleted > 0 {
+			slog.Info("retention purge completed", "deleted_sessions", deleted, "cutoff", cutoff.Format(time.RFC3339))
+		}
+	}
+
+	purge()
+
+	ticker := time.NewTicker(24 * time.Hour)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				purge()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
@@ -107,12 +147,42 @@ func main() {
 	defer store.Close()
 	slog.Info("database connected", "path", cfg.DBPath)
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	startRetentionPurger(ctx, store, cfg.DataRetentionDays)
+
 	// Initialize Grafana client and session resolver.
 	grafanaClient := grafana.NewClient(cfg.GrafanaURL, cfg.GrafanaToken)
-	_ = auth.NewSessionResolver(grafanaClient)
+	sessionResolver := auth.NewSessionResolver(grafanaClient)
 
 	// Initialize dashboard context enricher with 5-minute cache TTL.
 	enricher := appcontext.NewEnricher(grafanaClient, 5*time.Minute)
+
+	// Initialize LLM client.
+	llmClient, err := llm.NewClient(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	if err != nil {
+		slog.Warn("LLM client not configured, chat will be unavailable", "error", err)
+	}
+
+	// Initialize MCP clients: connect via SSE and discover tools.
+	var mcpClients []*mcp.Client
+	for _, srv := range cfg.MCPServers {
+		c := mcp.NewClient(srv.URL, srv.Type)
+		if err := c.Connect(context.Background()); err != nil {
+			slog.Warn("failed to connect to MCP server (will skip)", "type", srv.Type, "url", srv.URL, "error", err)
+			continue
+		}
+		mcpClients = append(mcpClients, c)
+	}
+
+	// Create agent manager.
+	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store)
+	if len(mcpClients) > 0 {
+		if err := agentMgr.DiscoverTools(context.Background()); err != nil {
+			slog.Warn("failed to discover MCP tools", "error", err)
+		}
+	}
 
 	mux := http.NewServeMux()
 
@@ -137,6 +207,28 @@ func main() {
 		json.NewEncoder(w).Encode(summary)
 	})
 
+	// Chat API (SSE streaming)
+	if llmClient != nil {
+		mux.HandleFunc("POST /api/chat", api.ChatHandler(func(r *http.Request, req api.ChatRequest, streamFn func(api.StreamChunk)) {
+			user, err := sessionResolver.Resolve(r.Context(), r)
+			if err != nil {
+				streamFn(api.StreamChunk{Type: "error", Message: "unauthorized"})
+				return
+			}
+			agentMgr.HandleChat(r.Context(), user, req, streamFn)
+		}))
+		slog.Info("chat endpoint registered")
+	} else {
+		mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "chat not available: OpenAI API key not configured", http.StatusServiceUnavailable)
+		})
+	}
+
+	// History API (user-scoped)
+	mux.HandleFunc("GET /api/history", api.HistoryListHandler(store, sessionResolver))
+	mux.HandleFunc("GET /api/history/{id}", api.HistoryDetailHandler(store, sessionResolver))
+	mux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
+
 	// Grafana reverse proxy
 	grafanaHandler, err := proxy.GrafanaHandler(cfg.GrafanaURL)
 	if err != nil {
@@ -158,9 +250,6 @@ func main() {
 		Addr:    cfg.ListenAddr,
 		Handler: mux,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		slog.Info("starting server", "addr", cfg.ListenAddr)

@@ -1,0 +1,17 @@
+[Unit]
+Description=Monitoring Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=monitoring-assistant
+Group=monitoring-assistant
+WorkingDirectory=/opt/monitoring-assistant
+EnvironmentFile=-/etc/monitoring-assistant/assistant.env
+ExecStart=/opt/monitoring-assistant/assistant -config /etc/monitoring-assistant/config.yaml
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
