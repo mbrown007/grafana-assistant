@@ -82,10 +82,10 @@ go test ./... -cover
 
 ### Prerequisites
 
-1. Start LGTM stack:
+1. Start the dev-test stack:
 ```bash
-cd /home/marc/Documents/docker-otel-lgtm
-./run-lgtm.sh
+cd /home/marc/Documents/github/monitoring-assistant
+docker compose -f dev-test-docker-compose.yml up -d --wait
 ```
 
 2. Start MCP servers (see TESTING_GUIDE.md)
@@ -306,7 +306,7 @@ go test ./... -parallel 4
 
 ### Tests Fail with "connection refused"
 
-- Ensure LGTM stack is running
+- Ensure the dev-test stack is running
 - Check MCP servers are started
 - Verify ports are not blocked
 

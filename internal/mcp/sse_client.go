@@ -330,6 +330,7 @@ func (c *SSEClient) InvokeTool(ctx context.Context, name string, args map[string
 	if err != nil {
 		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
 		return nil, fmt.Errorf("invoke tool %s: %w", name, err)
 	}
 
@@ -353,6 +354,7 @@ func (c *SSEClient) InvokeTool(ctx context.Context, name string, args map[string
 	if resp.Error != nil {
 		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
 		return nil, fmt.Errorf("tool error: %s", resp.Error.Message)
 	}
 

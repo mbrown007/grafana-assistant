@@ -18,3 +18,7 @@ mcp_servers:
     transport: "stdio"
     command: "/usr/local/bin/genesys-cloud-mcp-server"
     args: ["-transport", "stdio"]
+  - type: "kb"
+    transport: "stdio"
+    command: "/usr/local/bin/kb-mcp-server"
+    args: ["-transport", "stdio"]

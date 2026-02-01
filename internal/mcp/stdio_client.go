@@ -164,6 +164,7 @@ func (c *StdioClient) InvokeTool(ctx context.Context, name string, args map[stri
 	if err != nil {
 		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
 		return nil, fmt.Errorf("invoke tool %s: %w", name, err)
 	}
 
@@ -187,6 +188,7 @@ func (c *StdioClient) InvokeTool(ctx context.Context, name string, args map[stri
 	if resp.Error != nil {
 		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
 		return nil, fmt.Errorf("tool error: %s", resp.Error.Message)
 	}
 

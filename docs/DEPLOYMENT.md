@@ -2,7 +2,7 @@
 
 ## Build and package
 
-The production binary embeds the built frontend assets in `static/`.
+The production binary embeds the built frontend assets in `frontend/dist/`.
 
 ```bash
 make package
@@ -48,6 +48,8 @@ Copy `config.example.yaml` to `/etc/monitoring-assistant/config.yaml` and adjust
 - `data_retention_days`
 - `openai_api_key` / `openai_model`
 - `mcp_servers`
+- `kb_path` (if your KB is not in the working directory)
+- `kb_max_sections` / `kb_max_section_chars` (if you want to tune KB context size)
 
 Store secrets in `/etc/monitoring-assistant/assistant.env` and set permissions to `600`.
 
@@ -67,6 +69,17 @@ Adjust `User`, `Group`, `WorkingDirectory`, and paths in `ExecStart` as needed.
 If you use MCP stdio mode, the MCP processes inherit the assistant's environment,
 so put MCP secrets/vars in `/etc/monitoring-assistant/assistant.env` or a
 drop-in `assistant.secrets` file referenced by the override.
+
+## KB indexing (optional)
+
+If you have a larger KB folder or want faster startup, build an index file:
+
+```bash
+make kb-reindex
+```
+
+This writes `KB/.kb_index.json`, which the assistant and KB MCP server will load
+if present.
 
 ## Grafana configuration
 

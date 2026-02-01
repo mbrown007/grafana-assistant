@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -93,7 +94,15 @@ func runSSE(mcpServer *mcpserver.MCPServer, addr string) error {
 	log.Printf("Running server with SSE transport at %s", addr)
 	log.Printf("SSE endpoint: http://%s/sse", addr)
 
-	sseServer := server.NewSSEServer(mcpServer.GetServer(), "/sse")
+	httpSrv := &http.Server{Addr: addr}
+	sseServer := server.NewSSEServer(mcpServer.GetServer(),
+		server.WithStaticBasePath("/"),
+		server.WithHTTPServer(httpSrv),
+	)
+
+	mux := http.NewServeMux()
+	mux.Handle("/", sseServer)
+	httpSrv.Handler = mux
 
 	// Setup graceful shutdown
 	go func() {
@@ -107,7 +116,7 @@ func runSSE(mcpServer *mcpserver.MCPServer, addr string) error {
 	}()
 
 	log.Printf("Server listening on %s", addr)
-	if err := sseServer.Start(addr); err != nil {
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 

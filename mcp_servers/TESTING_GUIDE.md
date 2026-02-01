@@ -2,17 +2,14 @@
 
 ## Overview
 
-This guide walks through testing the complete Grafana SM3 Chat Plugin with local MCP servers and the LGTM stack.
+This guide walks through testing the complete Grafana SM3 Chat Plugin with local MCP servers and the dev-test Docker stack.
 
 ## Stack Components
 
-### 1. LGTM Stack (Already Running)
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **AlertManager**: http://localhost:9093
-- **Loki**: Port 3100
-- **Tempo**: Port 4317/4318
-- **Pyroscope**: Port 4040
+### 1. Dev-test Stack (Docker Compose)
+- **Grafana**: http://localhost:13000/grafana (admin/admin, anonymous admin enabled)
+- **Prometheus**: http://localhost:19090
+- **AlertManager**: http://localhost:19093
 
 ### 2. MCP Servers (Go)
 - **Grafana MCP**: `/mcps/mcp-grafana` (Already Go ✅)
@@ -33,7 +30,7 @@ cd /home/marc/Documents/github/sm3_agent/mcps/mcp-grafana
 
 # Create .env file
 cat > .env <<EOF
-GRAFANA_URL=http://localhost:3000
+GRAFANA_URL=http://localhost:13000/grafana
 GRAFANA_API_KEY=your-grafana-api-key
 MCP_TRANSPORT=sse
 MCP_HOST=0.0.0.0
@@ -41,7 +38,7 @@ MCP_PORT=8888
 EOF
 
 # Get Grafana API key
-# 1. Go to http://localhost:3000
+# 1. Go to http://localhost:13000/grafana
 # 2. Login (admin/admin)
 # 3. Settings → Service accounts → Add service account
 # 4. Name: "MCP Server", Role: Admin
@@ -55,7 +52,7 @@ go build -o grafana-mcp ./cmd/mcp-grafana
 **Expected output:**
 ```
 Starting Grafana MCP server (SSE mode) on 0.0.0.0:8888
-Connected to Grafana at http://localhost:3000
+Connected to Grafana at http://localhost:13000/grafana
 Registered 25 MCP tools
 ```
 
@@ -66,7 +63,7 @@ cd /home/marc/Documents/github/sm3_agent/mcps/alertmanager-mcp-go
 
 # Create .env file
 cat > .env <<EOF
-ALERTMANAGER_URL=http://localhost:9093
+ALERTMANAGER_URL=http://localhost:19093
 MCP_TRANSPORT=sse
 MCP_HOST=0.0.0.0
 MCP_PORT=9300
@@ -80,7 +77,7 @@ make build
 **Expected output:**
 ```
 Starting AlertManager MCP server (SSE mode) on 0.0.0.0:9300
-Connected to AlertManager at http://localhost:9093
+Connected to AlertManager at http://localhost:19093
 Registered 8 MCP tools
 ```
 
@@ -149,9 +146,8 @@ sudo cp -r dist/* /var/lib/grafana/plugins/sabio-sm3-chat-plugin/
 # Set ownership (if running Grafana as grafana user)
 sudo chown -R grafana:grafana /var/lib/grafana/plugins/sabio-sm3-chat-plugin
 
-# If using Docker Grafana from LGTM stack, copy to volume
-# Find the volume path:
-docker volume inspect docker-otel-lgtm_grafana-storage
+# If using Docker Grafana from the dev-test stack, copy to the local provisioning mount
+# (./containers/grafana/provisioning) or add a bind mount for plugins in the compose file.
 
 # Copy to volume (adjust path based on above command)
 # For Docker, you may need to mount the plugin directory
@@ -179,9 +175,9 @@ docker run -e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=sabio-sm3-chat-plugin ..
 # If systemd
 sudo systemctl restart grafana-server
 
-# If Docker (from LGTM stack)
-cd /home/marc/Documents/docker-otel-lgtm
-docker-compose restart grafana
+# If Docker (dev-test stack)
+cd /home/marc/Documents/github/monitoring-assistant
+docker compose -f dev-test-docker-compose.yml restart grafana
 ```
 
 ---
@@ -189,7 +185,7 @@ docker-compose restart grafana
 ## Step 3: Configure Plugin in Grafana UI
 
 1. **Navigate to Plugin Settings**:
-   - Go to http://localhost:3000
+   - Go to http://localhost:13000/grafana
    - Login (admin/admin)
    - Settings (⚙️) → Plugins
    - Search for "SM3 Monitoring Agent"
@@ -334,7 +330,7 @@ Create a silence for all alerts matching alertname=TestAlert for 1 hour
 
 **What to Check:**
 ✅ Silence created successfully
-✅ Can verify in AlertManager UI: http://localhost:9093/#/silences
+✅ Can verify in AlertManager UI: http://localhost:19093/#/silences
 
 ### Test 6: Prometheus Query via Grafana MCP
 
@@ -542,7 +538,7 @@ ps aux | grep mcp
 netstat -tuln | grep -E '(8888|9300|9400)'
 
 # Check Grafana plugins
-curl -u admin:admin http://localhost:3000/api/plugins
+curl -u admin:admin http://localhost:13000/grafana/api/plugins
 ```
 
 ### Restart Everything
@@ -550,7 +546,7 @@ curl -u admin:admin http://localhost:3000/api/plugins
 ```bash
 # Stop all
 pkill -f mcp
-docker-compose -f /home/marc/Documents/docker-otel-lgtm/docker-compose.yml restart grafana
+docker compose -f /home/marc/Documents/github/monitoring-assistant/dev-test-docker-compose.yml restart grafana
 
 # Start MCPs
 # (Run commands from Step 1)
@@ -558,7 +554,7 @@ docker-compose -f /home/marc/Documents/docker-otel-lgtm/docker-compose.yml resta
 # Restart Grafana
 sudo systemctl restart grafana-server
 # OR
-docker-compose -f /home/marc/Documents/docker-otel-lgtm/docker-compose.yml restart grafana
+docker compose -f /home/marc/Documents/github/monitoring-assistant/dev-test-docker-compose.yml restart grafana
 ```
 
 ### View All Logs

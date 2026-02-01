@@ -8,6 +8,8 @@ This repository contains Go implementations of MCP servers that provide AI agent
 
 - **AlertManager MCP Server** - Prometheus AlertManager integration
 - **Genesys Cloud MCP Server** - Genesys Cloud contact center platform integration
+- **Grafana MCP Server** - Grafana APIs, datasources, and query tooling
+- **KB MCP Server** - Local KB search and section retrieval
 
 ## Servers
 
@@ -71,6 +73,26 @@ go run cmd/server/main.go
 
 See [genesys-cloud-mcp-go/README.md](genesys-cloud-mcp-go/README.md) for detailed documentation.
 
+### KB MCP Server
+
+**Location:** `kb-mcp-go/`
+
+**Features:**
+- Search local KB markdown sections
+- Fetch full section content by ID
+
+**Tools:**
+- `search_kb` - Search KB sections by keyword
+- `get_kb_section` - Retrieve full section content by ID
+
+**Quick Start:**
+```bash
+cd kb-mcp-go
+KB_PATH=../../KB go run cmd/server/main.go
+```
+
+See [kb-mcp-go/README.md](kb-mcp-go/README.md) for detailed documentation.
+
 ## Testing
 
 ### Run All Tests
@@ -103,7 +125,7 @@ See [RUN_TESTS.md](RUN_TESTS.md) for detailed testing instructions.
 
 ## Documentation
 
-- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Step-by-step testing with local LGTM stack
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Step-by-step testing with local dev-test Docker stack
 - **[RUN_TESTS.md](RUN_TESTS.md)** - Test execution guide
 - **[TESTS_SUMMARY.md](TESTS_SUMMARY.md)** - Complete test coverage summary
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/marcusz/monitoring-assistant/internal/metrics"
 )
 
 const (
@@ -78,6 +79,7 @@ func (m *Manager) GetOrCreateScratchpad(ctx context.Context, user *grafana.User,
 	if resp == nil || resp.UID == "" {
 		return "", 0, "", fmt.Errorf("grafana returned empty dashboard UID")
 	}
+	metrics.ScratchpadsCreatedTotal.Inc()
 
 	return resp.UID, scratchpadPanelID, defaultScratchpadURL + resp.UID, nil
 }

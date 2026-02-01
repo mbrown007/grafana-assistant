@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -97,7 +98,7 @@ func (s *MCPServer) getStatusTool() mcp.Tool {
 }
 
 // handleGetStatus handles the get_status tool call
-func (s *MCPServer) handleGetStatus(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleGetStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
@@ -153,10 +154,12 @@ func (s *MCPServer) getAlertsTool() mcp.Tool {
 }
 
 // handleGetAlerts handles the get_alerts tool call
-func (s *MCPServer) handleGetAlerts(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleGetAlerts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		Filter    string `json:"filter"`
@@ -240,10 +243,12 @@ func (s *MCPServer) getAlertGroupsTool() mcp.Tool {
 }
 
 // handleGetAlertGroups handles the get_alert_groups tool call
-func (s *MCPServer) handleGetAlertGroups(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleGetAlertGroups(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		Silenced  *bool `json:"silenced"`
@@ -317,10 +322,12 @@ func (s *MCPServer) getSilencesTool() mcp.Tool {
 }
 
 // handleGetSilences handles the get_silences tool call
-func (s *MCPServer) handleGetSilences(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleGetSilences(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		Filter string `json:"filter"`
@@ -414,10 +421,12 @@ func (s *MCPServer) postSilenceTool() mcp.Tool {
 }
 
 // handlePostSilence handles the post_silence tool call
-func (s *MCPServer) handlePostSilence(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handlePostSilence(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		Silence alertmanager.Silence `json:"silence"`
@@ -458,10 +467,12 @@ func (s *MCPServer) deleteSilenceTool() mcp.Tool {
 }
 
 // handleDeleteSilence handles the delete_silence tool call
-func (s *MCPServer) handleDeleteSilence(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleDeleteSilence(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		SilenceID string `json:"silence_id"`
@@ -524,10 +535,12 @@ func (s *MCPServer) postAlertsTool() mcp.Tool {
 }
 
 // handlePostAlerts handles the post_alerts tool call
-func (s *MCPServer) handlePostAlerts(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handlePostAlerts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}
+	arguments := request.GetArguments()
+
 	// Parse arguments
 	var args struct {
 		Alerts []alertmanager.Alert `json:"alerts"`
@@ -565,7 +578,7 @@ func (s *MCPServer) getReceiversTool() mcp.Tool {
 }
 
 // handleGetReceivers handles the get_receivers tool call
-func (s *MCPServer) handleGetReceivers(arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+func (s *MCPServer) handleGetReceivers(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if result := s.enforceRateLimit(); result != nil {
 		return result, nil
 	}

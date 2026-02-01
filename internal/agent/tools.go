@@ -14,7 +14,22 @@ import (
 func MCPToolsToOpenAI(mcpTools []mcp.Tool) []openai.Tool {
 	tools := make([]openai.Tool, 0, len(mcpTools))
 	for _, t := range mcpTools {
-		params, err := json.Marshal(t.InputSchema)
+		schema := t.InputSchema
+		// OpenAI requires object schemas to have a non-nil properties field.
+		// MCP tools with no parameters may omit it or send an empty map.
+		if schema != nil {
+			if typ, _ := schema["type"].(string); typ == "object" {
+				props, _ := schema["properties"].(map[string]any)
+				if len(props) == 0 {
+					schema = map[string]any{
+						"type":                 "object",
+						"properties":           map[string]any{},
+						"additionalProperties": false,
+					}
+				}
+			}
+		}
+		params, err := json.Marshal(schema)
 		if err != nil {
 			continue
 		}

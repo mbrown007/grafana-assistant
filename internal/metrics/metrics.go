@@ -8,6 +8,44 @@ import (
 )
 
 var (
+	ChatsStartedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "monitoring_assistant_chats_started_total",
+			Help: "Total number of new chat sessions initiated.",
+		},
+	)
+
+	ToolCallsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "monitoring_assistant_tool_calls_total",
+			Help: "Total number of tool calls.",
+		},
+		[]string{"tool_name"},
+	)
+
+	LLMTokensTotalByType = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "monitoring_assistant_llm_tokens_total",
+			Help: "Total number of LLM tokens processed.",
+		},
+		[]string{"model", "token_type"},
+	)
+
+	ScratchpadsCreatedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "monitoring_assistant_scratchpads_created_total",
+			Help: "Total number of scratchpad dashboards created.",
+		},
+	)
+
+	ErrorsTotalBySource = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "monitoring_assistant_errors_total",
+			Help: "Total number of errors by source.",
+		},
+		[]string{"source"},
+	)
+
 	HTTPRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "assistant_http_requests_total",
@@ -78,6 +116,11 @@ var (
 
 func init() {
 	prometheus.MustRegister(
+		ChatsStartedTotal,
+		ToolCallsTotal,
+		LLMTokensTotalByType,
+		ScratchpadsCreatedTotal,
+		ErrorsTotalBySource,
 		HTTPRequestsTotal,
 		HTTPRequestDuration,
 		LLMRequestsTotal,

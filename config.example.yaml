@@ -63,10 +63,9 @@ mcp_servers:
   - type: "genesyscloud"
     transport: "sse"
     url: "http://localhost:8002"
-# Optional KB MCP (search KB via tools instead of direct context injection)
-# - type: "kb"
-#   transport: "sse"
-#   url: "http://localhost:8003"
+  - type: "kb"
+    transport: "sse"
+    url: "http://localhost:8003"
 
 # Example stdio server (launched by the assistant):
 # mcp_servers:

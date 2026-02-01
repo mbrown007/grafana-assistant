@@ -64,7 +64,7 @@ func TestGetStatus(t *testing.T) {
 	}
 	mockStatus.Cluster.Name = "cluster-1"
 	mockStatus.Cluster.Status = "ready"
-	mockStatus.Cluster.Peers = []string{"peer1", "peer2"}
+	mockStatus.Cluster.Peers = []any{"peer1", "peer2"}
 	mockStatus.VersionInfo.Version = "0.25.0"
 	mockStatus.VersionInfo.Revision = "abc123"
 	mockStatus.VersionInfo.Branch = "main"

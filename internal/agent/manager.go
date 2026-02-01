@@ -18,6 +18,7 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
 	"github.com/marcusz/monitoring-assistant/internal/llm"
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/marcusz/monitoring-assistant/internal/metrics"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 	"github.com/marcusz/monitoring-assistant/pkg/kb"
 )
@@ -135,6 +136,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			CreatedAt:    now,
 			UpdatedAt:    now,
 		}
+		metrics.ChatsStartedTotal.Inc()
 		if err := m.store.CreateSession(ctx, sess); err != nil {
 			slog.ErrorContext(ctx, "failed to create session", "error", err)
 		}
@@ -195,6 +197,14 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			Request:      req.Message,
 			CreatedAt:    createdAt,
 		})
+		slog.InfoContext(ctx, "User message received",
+			"event", "user_message",
+			"session_id", sess.ID,
+			"user_id", user.ID,
+			"org_id", user.OrgID,
+			"dashboard_uid", sess.DashboardUID,
+			"message", req.Message,
+		)
 	}
 
 	// 5. Prepare OpenAI tools.
@@ -209,6 +219,12 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			// Last iteration: stream directly to the client.
 			ch, err := m.llm.StreamChat(ctx, messages, nil)
 			if err != nil {
+				slog.ErrorContext(ctx, "LLM stream error",
+					"event", "error",
+					"source", "llm",
+					"session_id", sess.ID,
+					"error", err,
+				)
 				streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
 				return
 			}
@@ -219,6 +235,12 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		// Use non-streaming call for tool loop iterations to check for tool calls.
 		resp, err := m.llm.Chat(ctx, messages, openaiTools)
 		if err != nil {
+			slog.ErrorContext(ctx, "LLM error",
+				"event", "error",
+				"source", "llm",
+				"session_id", sess.ID,
+				"error", err,
+			)
 			streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
 			return
 		}
@@ -235,6 +257,12 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				// Re-stream for a proper token-by-token experience.
 				ch, err := m.llm.StreamChat(ctx, messages, nil)
 				if err != nil {
+					slog.ErrorContext(ctx, "LLM stream error",
+						"event", "error",
+						"source", "llm",
+						"session_id", sess.ID,
+						"error", err,
+					)
 					streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
 					return
 				}
@@ -254,6 +282,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 				args = map[string]any{"raw": tc.Function.Arguments}
 			}
+			metrics.ToolCallsTotal.WithLabelValues(tc.Function.Name).Inc()
 
 			// Stream tool invocation to client.
 			streamFn(api.StreamChunk{
@@ -262,6 +291,15 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				ToolID:    tc.ID,
 				Arguments: args,
 			})
+			slog.InfoContext(ctx, "Executing tool call",
+				"event", "tool_call",
+				"session_id", sess.ID,
+				"user_id", user.ID,
+				"org_id", user.OrgID,
+				"dashboard_uid", sess.DashboardUID,
+				"tool_name", tc.Function.Name,
+				"params", args,
+			)
 
 			// Execute tool.
 			result, err := m.handleInternalTool(ctx, tc.Function.Name, args, user, sess)
@@ -269,6 +307,14 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				result, err = RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
 			}
 			if err != nil {
+				metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
+				slog.ErrorContext(ctx, "Tool call failed",
+					"event", "error",
+					"source", "tool_call",
+					"session_id", sess.ID,
+					"tool_name", tc.Function.Name,
+					"error", err,
+				)
 				slog.WarnContext(ctx, "tool call failed", "tool", tc.Function.Name, "error", err)
 				result = fmt.Sprintf("Error: %v", err)
 			}
@@ -328,6 +374,14 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			Response:     finalContent,
 			CreatedAt:    createdAt,
 		})
+		slog.InfoContext(ctx, "LLM response sent",
+			"event", "assistant_response",
+			"session_id", sess.ID,
+			"user_id", user.ID,
+			"org_id", user.OrgID,
+			"dashboard_uid", sess.DashboardUID,
+			"message", finalContent,
+		)
 	}
 }
 
@@ -442,6 +496,15 @@ func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[
 		var err error
 		uid, panelID, url, err = m.scratchpads.GetOrCreateScratchpad(ctx, user, sess.ID)
 		if err != nil {
+			metrics.ErrorsTotalBySource.WithLabelValues("grafana_api").Inc()
+			slog.ErrorContext(ctx, "Failed to get or create scratchpad",
+				"event", "error",
+				"source", "grafana_api",
+				"session_id", sess.ID,
+				"user_id", user.ID,
+				"org_id", user.OrgID,
+				"error", err,
+			)
 			return nil, err
 		}
 		if err := m.store.UpdateSessionScratchpad(ctx, sess.ID, uid, time.Now()); err != nil {
@@ -452,6 +515,15 @@ func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[
 	}
 
 	if err := m.scratchpads.UpdatePanel(ctx, uid, panelID, query, title, description, panelType, datasource, timeRange); err != nil {
+		metrics.ErrorsTotalBySource.WithLabelValues("grafana_api").Inc()
+		slog.ErrorContext(ctx, "Failed to update scratchpad panel",
+			"event", "error",
+			"source", "grafana_api",
+			"session_id", sess.ID,
+			"user_id", user.ID,
+			"org_id", user.OrgID,
+			"error", err,
+		)
 		return nil, err
 	}
 	if url == "" {

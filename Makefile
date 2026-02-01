@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex e2e-up e2e-down test-e2e
+.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e
 .PHONY: audit-log-dir
 
 BIN := bin/assistant
@@ -24,14 +24,19 @@ frontend-test: ## Run frontend Vitest tests
 test-all: test frontend-test ## Run Go unit + frontend tests
 
 # ---------------------------------------------------------------------------
-# E2E tests
+# Docker stack (shared by dev and E2E)
 # ---------------------------------------------------------------------------
 
-e2e-up: ## Start E2E docker-compose stack
+docker-up: ## Start Docker stack (Prometheus, Grafana, Loki, Alertmanager)
+	@mkdir -p data
 	docker compose -f dev-test-docker-compose.yml up -d --wait
 
-e2e-down: ## Stop E2E docker-compose stack
+docker-down: ## Stop Docker stack
 	docker compose -f dev-test-docker-compose.yml down -v
+
+# E2E aliases
+e2e-up: docker-up
+e2e-down: docker-down
 
 test-e2e: ## Run E2E tests (requires e2e-up)
 	go test -tags=e2e -count=1 -timeout=180s -v ./tests/e2e/...
@@ -64,21 +69,23 @@ mcp-build: ## Build all MCP servers
 	@echo "All MCP servers built."
 
 mcp-start: mcp-stop mcp-build ## Start all MCP servers in SSE mode
-	@echo "Starting AlertManager MCP on :8000..."
-	MCP_TRANSPORT=sse MCP_PORT=8000 ALERTMANAGER_URL=$${ALERTMANAGER_URL:-http://localhost:19093} \
-		./bin/mcp-alertmanager > .mcp-alertmanager.log 2>&1 & echo $$! > .mcp-alertmanager.pid
-	@echo "Starting Grafana MCP on :8001..."
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	echo "Starting AlertManager MCP on :8000..."; \
+	MCP_TRANSPORT=sse MCP_PORT=8000 \
+		ALERTMANAGER_URL=$${ALERTMANAGER_URL:-http://localhost:19093} \
+		./bin/mcp-alertmanager > .mcp-alertmanager.log 2>&1 & echo $$! > .mcp-alertmanager.pid; \
+	echo "Starting Grafana MCP on :8001..."; \
 	GRAFANA_URL=$${GRAFANA_URL:-http://localhost:13000/grafana} \
 		./bin/mcp-grafana -transport sse -address localhost:8001 \
-		> .mcp-grafana.log 2>&1 & echo $$! > .mcp-grafana.pid
-	@echo "Starting Genesys Cloud MCP on :8002..."
+		> .mcp-grafana.log 2>&1 & echo $$! > .mcp-grafana.pid; \
+	echo "Starting Genesys Cloud MCP on :8002..."; \
 	MCP_TRANSPORT=sse MCP_PORT=8002 \
-		./bin/mcp-genesyscloud > .mcp-genesyscloud.log 2>&1 & echo $$! > .mcp-genesyscloud.pid
-	@echo "Starting KB MCP on :8003..."
+		./bin/mcp-genesyscloud > .mcp-genesyscloud.log 2>&1 & echo $$! > .mcp-genesyscloud.pid; \
+	echo "Starting KB MCP on :8003..."; \
 	MCP_TRANSPORT=sse MCP_PORT=8003 KB_PATH=$${KB_PATH:-KB} \
-		./bin/mcp-kb > .mcp-kb.log 2>&1 & echo $$! > .mcp-kb.pid
-	@sleep 1
-	@echo "MCP servers started."
+		./bin/mcp-kb > .mcp-kb.log 2>&1 & echo $$! > .mcp-kb.pid; \
+	sleep 1; \
+	echo "MCP servers started."
 
 mcp-stop: ## Stop all MCP servers
 	@for name in alertmanager grafana genesyscloud kb; do \
@@ -90,20 +97,22 @@ mcp-stop: ## Stop all MCP servers
 	done
 
 # ---------------------------------------------------------------------------
-# Dev workflow — runs MCP servers + Go backend + Vite frontend
+# Dev workflow — runs Docker + MCP servers + Go backend + Vite frontend
 # ---------------------------------------------------------------------------
 
-dev: dev-stop build ## Start everything for development
+dev: dev-stop docker-up build ## Start full dev environment
 	@echo "=== Starting MCP servers ==="
 	@$(MAKE) mcp-start --no-print-directory 2>/dev/null || echo "  (some MCP servers may have failed — check logs)"
 	@sleep 1
 	@echo ""
 	@echo "=== Starting backend ==="
+	@mkdir -p data
 	./$(BIN) -config config.yaml > .dev-backend.log 2>&1 & echo $$! > .dev-backend.pid
 	@echo "=== Starting frontend ==="
 	npm --prefix frontend run dev > .dev-frontend.log 2>&1 & echo $$! > .dev-frontend.pid
 	@sleep 1
 	@echo ""
+	@echo "  Docker    → Grafana :13000  Prometheus :19090  Alertmanager :19093  Loki :13100"
 	@echo "  Backend   → http://localhost:8081"
 	@echo "  Frontend  → http://localhost:5173  (proxies /api + /grafana to backend)"
 	@echo "  MCP       → alertmanager :8000, grafana :8001, genesyscloud :8002, kb :8003"
@@ -111,7 +120,7 @@ dev: dev-stop build ## Start everything for development
 	@echo "  Logs:  make dev-logs"
 	@echo "  Stop:  make dev-stop"
 
-dev-stop: ## Stop all dev processes
+dev-stop: ## Stop all dev processes (keeps Docker running)
 	@$(MAKE) mcp-stop --no-print-directory
 	@for name in backend frontend; do \
 		if [ -f .dev-$$name.pid ]; then \
@@ -120,6 +129,8 @@ dev-stop: ## Stop all dev processes
 			echo "Stopped $$name"; \
 		fi; \
 	done
+
+dev-down: dev-stop docker-down ## Stop everything including Docker
 
 dev-restart: dev ## Rebuild and restart everything
 

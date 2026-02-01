@@ -134,6 +134,10 @@ Colors: blue, green, red, amber, purple. Icons: alert, activity, server, cpu, me
 	}
 
 	if hasTools {
+		b.WriteString("\n## Available Datasources\n")
+		b.WriteString("When calling Grafana query tools (e.g. grafana__query_prometheus, grafana__query_loki), use these datasource UIDs:\n")
+		b.WriteString("- **prometheus** — Prometheus (metrics)\n")
+		b.WriteString("- **loki** — Loki (logs)\n")
 		b.WriteString("\n## Available Tools\n")
 		for _, t := range tools {
 			b.WriteString(fmt.Sprintf("- **%s**: %s\n", t.Name, t.Description))

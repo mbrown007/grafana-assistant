@@ -16,3 +16,10 @@ scrape_configs:
           job: varlogs
           app: monitoring-assistant
           __path__: /var/log/grafana-assistant/*.log
+  - job_name: audit
+    static_configs:
+      - targets: ["localhost"]
+        labels:
+          job: audit
+          app: monitoring-assistant
+          __path__: /host-project/data/audit.log

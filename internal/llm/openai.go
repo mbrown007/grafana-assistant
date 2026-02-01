@@ -77,15 +77,18 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 	if err != nil {
 		metrics.LLMRequestsTotal.WithLabelValues(c.model, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("llm").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("llm").Inc()
 		return nil, fmt.Errorf("openai chat: %w", err)
 	}
 
 	metrics.LLMRequestsTotal.WithLabelValues(c.model, "ok").Inc()
 	if resp.Usage.PromptTokens > 0 {
 		metrics.LLMTokensTotal.WithLabelValues(c.model, "prompt").Add(float64(resp.Usage.PromptTokens))
+		metrics.LLMTokensTotalByType.WithLabelValues(c.model, "prompt").Add(float64(resp.Usage.PromptTokens))
 	}
 	if resp.Usage.CompletionTokens > 0 {
 		metrics.LLMTokensTotal.WithLabelValues(c.model, "completion").Add(float64(resp.Usage.CompletionTokens))
+		metrics.LLMTokensTotalByType.WithLabelValues(c.model, "completion").Add(float64(resp.Usage.CompletionTokens))
 	}
 
 	if len(resp.Choices) == 0 {
@@ -109,6 +112,7 @@ func (c *Client) StreamChat(ctx context.Context, messages []openai.ChatCompletio
 	if err != nil {
 		metrics.LLMRequestsTotal.WithLabelValues(c.model, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("llm").Inc()
+		metrics.ErrorsTotalBySource.WithLabelValues("llm").Inc()
 		return nil, fmt.Errorf("openai stream: %w", err)
 	}
 	metrics.LLMRequestsTotal.WithLabelValues(c.model, "ok").Inc()

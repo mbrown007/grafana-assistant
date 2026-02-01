@@ -64,9 +64,9 @@ func (c *Client) prepareRequest(tenantID string) *resty.Request {
 // Status represents Alertmanager status
 type Status struct {
 	Cluster struct {
-		Name   string   `json:"name"`
-		Status string   `json:"status"`
-		Peers  []string `json:"peers"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Peers  []any  `json:"peers"`
 	} `json:"cluster"`
 	VersionInfo struct {
 		Version   string `json:"version"`
@@ -220,7 +220,7 @@ type Silence struct {
 type Matcher struct {
 	Name    string `json:"name"`
 	Value   string `json:"value"`
-	IsRegex bool   `json:"isRegex,omitempty"`
+	IsRegex bool   `json:"isRegex"`
 	IsEqual *bool  `json:"isEqual,omitempty"`
 }
 

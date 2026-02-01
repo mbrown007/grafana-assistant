@@ -345,6 +345,13 @@ func openAuditWriter(path string) (*auditWriter, error) {
 	}, nil
 }
 
+func (w *auditWriter) Close() error {
+	if w.file != nil {
+		return w.file.Close()
+	}
+	return nil
+}
+
 func (s *SQLite) writeAuditEntry(entry *AuditEntry) error {
 	s.auditMu.Lock()
 	defer s.auditMu.Unlock()

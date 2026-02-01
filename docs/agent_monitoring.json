@@ -26,8 +26,9 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(increase(monitoring_assistant_chats_started_total[$__range]))",
-          "refId": "A"
+          "expr": "sum(monitoring_assistant_chats_started_total) or vector(0)",
+          "refId": "A",
+          "instant": true
         }
       ],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
@@ -39,8 +40,9 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(increase(monitoring_assistant_tool_calls_total[$__range]))",
-          "refId": "A"
+          "expr": "sum(monitoring_assistant_tool_calls_total) or vector(0)",
+          "refId": "A",
+          "instant": true
         }
       ],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
@@ -52,8 +54,9 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(increase(monitoring_assistant_llm_tokens_total[$__range]))",
-          "refId": "A"
+          "expr": "sum(monitoring_assistant_llm_tokens_total) or vector(0)",
+          "refId": "A",
+          "instant": true
         }
       ],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
@@ -65,28 +68,99 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(increase(monitoring_assistant_errors_total[$__range]))",
-          "refId": "A"
+          "expr": "sum(monitoring_assistant_errors_total) or vector(0)",
+          "refId": "A",
+          "instant": true
         }
       ],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
     },
     {
-      "type": "barchart",
-      "title": "Tool Usage",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "type": "stat",
+      "title": "Avg Input Tokens / Chat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum by (tool_name) (increase(monitoring_assistant_tool_calls_total[$__range]))",
-          "refId": "A"
+          "expr": "(sum(monitoring_assistant_llm_tokens_total{token_type=\"prompt\"}) or vector(0)) / clamp_min(sum(monitoring_assistant_chats_started_total) or vector(1), 1)",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "type": "stat",
+      "title": "Avg Output Tokens / Chat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "(sum(monitoring_assistant_llm_tokens_total{token_type=\"completion\"}) or vector(0)) / clamp_min(sum(monitoring_assistant_chats_started_total) or vector(1), 1)",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "type": "stat",
+      "title": "LLM Cost (GBP)",
+      "description": "GPT-4.1 mini: input $0.80/1M, output $3.20/1M @ 0.79 USD/GBP",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "(sum(monitoring_assistant_llm_tokens_total{token_type=\"prompt\"}) or vector(0)) / 1e6 * 0.80 * 0.79 + (sum(monitoring_assistant_llm_tokens_total{token_type=\"completion\"}) or vector(0)) / 1e6 * 3.20 * 0.79",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyGBP",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "red", "value": 2}
+            ]
+          }
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "type": "barchart",
+      "title": "Tool Usage",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (tool_name) (monitoring_assistant_tool_calls_total)",
+          "refId": "A",
+          "instant": true
         }
       ]
     },
     {
       "type": "timeseries",
       "title": "Usage Over Time",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
@@ -100,8 +174,8 @@
           "refId": "B"
         },
         {
-          "expr": "sum(increase(monitoring_assistant_llm_tokens_total[$__rate_interval]))",
-          "legendFormat": "LLM Tokens",
+          "expr": "sum(increase(monitoring_assistant_llm_tokens_total[$__rate_interval])) / 1000",
+          "legendFormat": "LLM Tokens (k)",
           "refId": "C"
         }
       ]
@@ -109,7 +183,7 @@
     {
       "type": "timeseries",
       "title": "Errors Over Time (by source)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
@@ -121,24 +195,32 @@
     },
     {
       "type": "logs",
-      "title": "Chat Transcript (Loki)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "title": "Chat Transcript (Audit Log)",
+      "gridPos": {"h": 12, "w": 12, "x": 12, "y": 16},
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"monitoring-assistant\"} | json | session_id=\"$session_id\"",
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}{{end}}\"",
           "refId": "A"
         }
-      ]
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "dedupStrategy": "none",
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      }
     },
     {
       "type": "table",
       "title": "Recent Scratchpads",
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"monitoring-assistant\"} | json | event=\"tool_call\" | tool_name=\"scratchpad__upsert_panel\"",
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | event=\"tool_call\" | tool_name=\"scratchpad__upsert_panel\"",
           "refId": "A"
         }
       ],
@@ -164,20 +246,12 @@
         "label": "Session",
         "type": "query",
         "datasource": {"type": "loki", "uid": "loki"},
-        "query": "label_values({app=\"monitoring-assistant\"} | json, session_id)",
-        "refresh": 2,
-        "includeAll": false,
-        "multi": false
-      },
-      {
-        "name": "user_id",
-        "label": "User",
-        "type": "query",
-        "datasource": {"type": "loki", "uid": "loki"},
-        "query": "label_values({app=\"monitoring-assistant\"} | json, user_id)",
+        "query": "{app=\"monitoring-assistant\", job=\"audit\"} | json | keep session_id",
         "refresh": 2,
         "includeAll": true,
-        "multi": true
+        "multi": false,
+        "regex": "session_id=\"([^\"]+)\"",
+        "current": {"text": "All", "value": "$__all"}
       }
     ]
   },
