@@ -34,6 +34,9 @@ type Config struct {
 	// MCP servers.
 	MCPServers []MCPServer `yaml:"mcp_servers"`
 
+	// Metrics.
+	MetricsEnabled bool `yaml:"metrics_enabled"`
+
 	// Security settings.
 	AllowedOrigin     string `yaml:"allowed_origin"`
 	MaxMessageLength  int    `yaml:"max_message_length"`
@@ -81,6 +84,7 @@ func Load(path string) (*Config, error) {
 		DataRetentionDays: 30,
 		DBPath:            "data/assistant.db",
 		OpenAIModel:       "gpt-4o",
+		MetricsEnabled:    true,
 		MaxMessageLength:  16000,
 		MaxBodySize:       65536,
 		RateLimitPerMin:   20,

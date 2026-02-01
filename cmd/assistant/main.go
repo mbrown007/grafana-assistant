@@ -22,7 +22,9 @@ import (
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
 	"github.com/marcusz/monitoring-assistant/internal/llm"
+	"github.com/marcusz/monitoring-assistant/internal/logging"
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/marcusz/monitoring-assistant/internal/metrics"
 	"github.com/marcusz/monitoring-assistant/internal/middleware"
 	"github.com/marcusz/monitoring-assistant/internal/proxy"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
@@ -113,9 +115,9 @@ func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	logger := slog.New(logging.NewContextHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
-	}))
+	})))
 	slog.SetDefault(logger)
 
 	cfg, err := config.Load(*configPath)
@@ -193,6 +195,12 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Prometheus metrics endpoint.
+	if cfg.MetricsEnabled {
+		mux.Handle("GET /metrics", metrics.Handler())
+		slog.Info("metrics endpoint registered")
+	}
+
 	// Dashboard context API
 	mux.HandleFunc("GET /api/dashboard-context/{uid}", func(w http.ResponseWriter, r *http.Request) {
 		uid := r.PathValue("uid")
@@ -255,13 +263,17 @@ func main() {
 	// Rate limiter.
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitPerMin, cfg.RateLimitBurst)
 
-	// Middleware chain: SecurityHeaders → CORS → CSRFCheck → RateLimit → BodyLimit → mux
+	// Middleware chain: RequestID → Metrics → SecurityHeaders → CORS → CSRFCheck → RateLimit → BodyLimit → mux
 	var handler http.Handler = mux
 	handler = middleware.BodyLimit(cfg.MaxBodySize, handler)
 	handler = rateLimiter.Middleware(handler)
 	handler = middleware.CSRFCheck(handler)
 	handler = middleware.CORS(allowedOrigin, handler)
 	handler = middleware.SecurityHeaders(handler)
+	if cfg.MetricsEnabled {
+		handler = middleware.Metrics(handler)
+	}
+	handler = middleware.RequestID(handler)
 
 	// Graceful shutdown.
 	srv := &http.Server{

@@ -30,6 +30,9 @@ db_path: "data/assistant.db"
 # OpenAI model (default: gpt-4o)
 openai_model: "gpt-4o"
 
+# Prometheus metrics (default: true)
+metrics_enabled: true
+
 # Security settings
 # allowed_origin: "http://localhost:8080"   # CORS origin (auto-derived from listen_addr if blank)
 # max_message_length: 16000                 # Max chat message chars

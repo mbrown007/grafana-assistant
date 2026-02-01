@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"github.com/marcusz/monitoring-assistant/internal/metrics"
 )
 
 // StreamChunk represents a chunk of streaming response.
@@ -41,6 +44,23 @@ func NewClient(apiKey, model string) (*Client, error) {
 	}, nil
 }
 
+// NewClientWithBaseURL creates an OpenAI client with a custom base URL.
+// This is useful for testing with mock servers.
+func NewClientWithBaseURL(apiKey, model, baseURL string) (*Client, error) {
+	if apiKey == "" {
+		return nil, errors.New("openai api key is required")
+	}
+	if model == "" {
+		model = "gpt-4o"
+	}
+	cfg := openai.DefaultConfig(apiKey)
+	cfg.BaseURL = baseURL
+	return &Client{
+		client: openai.NewClientWithConfig(cfg),
+		model:  model,
+	}, nil
+}
+
 // Chat performs a non-streaming chat completion.
 func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool) (*openai.ChatCompletionMessage, error) {
 	req := openai.ChatCompletionRequest{
@@ -49,9 +69,23 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 		Tools:    tools,
 	}
 
+	start := time.Now()
 	resp, err := c.client.CreateChatCompletion(ctx, req)
+	duration := time.Since(start).Seconds()
+	metrics.LLMRequestDuration.WithLabelValues(c.model).Observe(duration)
+
 	if err != nil {
+		metrics.LLMRequestsTotal.WithLabelValues(c.model, "error").Inc()
+		metrics.ErrorsTotal.WithLabelValues("llm").Inc()
 		return nil, fmt.Errorf("openai chat: %w", err)
+	}
+
+	metrics.LLMRequestsTotal.WithLabelValues(c.model, "ok").Inc()
+	if resp.Usage.PromptTokens > 0 {
+		metrics.LLMTokensTotal.WithLabelValues(c.model, "prompt").Add(float64(resp.Usage.PromptTokens))
+	}
+	if resp.Usage.CompletionTokens > 0 {
+		metrics.LLMTokensTotal.WithLabelValues(c.model, "completion").Add(float64(resp.Usage.CompletionTokens))
 	}
 
 	if len(resp.Choices) == 0 {
@@ -70,16 +104,23 @@ func (c *Client) StreamChat(ctx context.Context, messages []openai.ChatCompletio
 		Stream:   true,
 	}
 
+	start := time.Now()
 	stream, err := c.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
+		metrics.LLMRequestsTotal.WithLabelValues(c.model, "error").Inc()
+		metrics.ErrorsTotal.WithLabelValues("llm").Inc()
 		return nil, fmt.Errorf("openai stream: %w", err)
 	}
+	metrics.LLMRequestsTotal.WithLabelValues(c.model, "ok").Inc()
 
 	chunks := make(chan StreamChunk, 100)
 
 	go func() {
 		defer close(chunks)
 		defer stream.Close()
+		defer func() {
+			metrics.LLMRequestDuration.WithLabelValues(c.model).Observe(time.Since(start).Seconds())
+		}()
 
 		chunks <- StreamChunk{Type: "start"}
 

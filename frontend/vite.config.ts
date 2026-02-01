@@ -25,5 +25,11 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: true,
     },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: './src/test/setup.ts',
+      css: false,
+    },
   };
 });

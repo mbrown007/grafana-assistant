@@ -1,4 +1,4 @@
-.PHONY: build run test lint clean help dev dev-stop dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd
+.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd
 
 BIN := bin/assistant
 
@@ -8,8 +8,16 @@ build: ## Build the Go binary
 run: build ## Build and run (foreground)
 	./$(BIN) -config config.yaml
 
-test: ## Run all tests
+test: ## Run all Go unit tests
 	go test ./...
+
+test-integration: ## Run integration tests (needs TEST_GRAFANA_URL)
+	go test -tags=integration -count=1 -timeout=120s ./tests/integration/...
+
+frontend-test: ## Run frontend Vitest tests
+	npm --prefix frontend run test
+
+test-all: test frontend-test ## Run Go unit + frontend tests
 
 lint: ## Run linter
 	golangci-lint run

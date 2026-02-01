@@ -62,7 +62,7 @@ func ChatHandlerWithLimit(handle ChatHandlerFunc, maxMessageLength int) http.Han
 		streamFn := func(chunk StreamChunk) {
 			data, err := json.Marshal(chunk)
 			if err != nil {
-				slog.Error("failed to marshal stream chunk", "error", err)
+				slog.ErrorContext(r.Context(), "failed to marshal stream chunk", "error", err)
 				return
 			}
 			_, _ = w.Write([]byte("data: "))
@@ -136,7 +136,7 @@ func AuthenticatedChatHandlerWithLimit(
 		streamFn := func(chunk StreamChunk) {
 			data, err := json.Marshal(chunk)
 			if err != nil {
-				slog.Error("failed to marshal stream chunk", "error", err)
+				slog.ErrorContext(r.Context(), "failed to marshal stream chunk", "error", err)
 				return
 			}
 			_, _ = w.Write([]byte("data: "))

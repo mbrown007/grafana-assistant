@@ -45,7 +45,7 @@ func NewGrafanaProxy(target *url.URL) *httputil.ReverseProxy {
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		slog.Error("grafana proxy error", "path", r.URL.Path, "error", err)
+		slog.ErrorContext(r.Context(), "grafana proxy error", "path", r.URL.Path, "error", err)
 		http.Error(w, "grafana proxy error", http.StatusBadGateway)
 	}
 

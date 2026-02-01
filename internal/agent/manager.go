@@ -46,12 +46,12 @@ func (m *Manager) DiscoverTools(ctx context.Context) error {
 	for _, c := range m.mcp {
 		tools, err := c.DiscoverTools(ctx)
 		if err != nil {
-			slog.Warn("failed to discover tools from MCP server", "error", err)
+			slog.WarnContext(ctx, "failed to discover tools from MCP server", "error", err)
 			continue
 		}
 		m.tools = append(m.tools, tools...)
 	}
-	slog.Info("discovered MCP tools", "count", len(m.tools))
+	slog.InfoContext(ctx, "discovered MCP tools", "count", len(m.tools))
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	if req.DashboardContext != nil && req.DashboardContext.UID != "" {
 		summary, err := m.enricher.GetDashboardSummary(ctx, req.DashboardContext.UID)
 		if err != nil {
-			slog.Warn("failed to enrich dashboard context", "uid", req.DashboardContext.UID, "error", err)
+			slog.WarnContext(ctx, "failed to enrich dashboard context", "uid", req.DashboardContext.UID, "error", err)
 		} else {
 			dashCtx = summary
 		}
@@ -89,7 +89,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	if sessionID != "" {
 		existing, err := m.store.GetSession(ctx, sessionID)
 		if err != nil {
-			slog.Error("failed to get session", "error", err)
+			slog.ErrorContext(ctx, "failed to get session", "error", err)
 		}
 		if existing != nil {
 			if existing.UserID != user.ID || existing.OrgID != user.OrgID {
@@ -113,7 +113,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			UpdatedAt:    now,
 		}
 		if err := m.store.CreateSession(ctx, sess); err != nil {
-			slog.Error("failed to create session", "error", err)
+			slog.ErrorContext(ctx, "failed to create session", "error", err)
 		}
 	} else {
 		// Refresh session metadata if needed.
@@ -123,7 +123,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				title = truncate(req.Message, 100)
 			}
 			if err := m.store.UpdateSessionMeta(ctx, sess.ID, title, dashboardUID, time.Now()); err != nil {
-				slog.Error("failed to update session", "error", err)
+				slog.ErrorContext(ctx, "failed to update session", "error", err)
 			} else {
 				sess.Title = title
 				sess.DashboardUID = dashboardUID
@@ -133,7 +133,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		// Load existing conversation history.
 		msgs, err := m.store.GetMessages(ctx, sess.ID)
 		if err != nil {
-			slog.Error("failed to load messages", "error", err)
+			slog.ErrorContext(ctx, "failed to load messages", "error", err)
 		} else {
 			mem.LoadHistory(msgs)
 		}
@@ -239,7 +239,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			// Execute tool.
 			result, err := RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
 			if err != nil {
-				slog.Warn("tool call failed", "tool", tc.Function.Name, "error", err)
+				slog.WarnContext(ctx, "tool call failed", "tool", tc.Function.Name, "error", err)
 				result = fmt.Sprintf("Error: %v", err)
 			}
 

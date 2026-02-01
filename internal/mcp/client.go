@@ -13,6 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/marcusz/monitoring-assistant/internal/metrics"
+	"github.com/marcusz/monitoring-assistant/internal/requestid"
 )
 
 // Tool represents an MCP tool definition.
@@ -121,7 +124,7 @@ func (c *Client) connectSSE(ctx context.Context) error {
 		}
 		c.mu.Unlock()
 		c.connected.Store(true)
-		slog.Info("MCP SSE connected", "type", c.serverType, "messageURL", c.messageURL)
+		slog.InfoContext(ctx, "MCP SSE connected", "type", c.serverType, "messageURL", c.messageURL)
 		return nil
 	case <-time.After(10 * time.Second):
 		resp.Body.Close()
@@ -255,6 +258,9 @@ func (c *Client) jsonRPC(ctx context.Context, method string, params any) (json.R
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if rid := requestid.FromContext(ctx); rid != "" {
+		req.Header.Set("X-Request-ID", rid)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -320,11 +326,17 @@ func (c *Client) InvokeTool(ctx context.Context, name string, args map[string]an
 	// Strip the server prefix for the actual call.
 	actualName := strings.TrimPrefix(name, c.serverType+"__")
 
+	start := time.Now()
 	raw, err := c.jsonRPC(ctx, "tools/call", map[string]any{
 		"name":      actualName,
 		"arguments": args,
 	})
+	duration := time.Since(start).Seconds()
+	metrics.MCPToolCallDuration.WithLabelValues(name).Observe(duration)
+
 	if err != nil {
+		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
+		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
 		return nil, fmt.Errorf("invoke tool %s: %w", name, err)
 	}
 
@@ -346,8 +358,12 @@ func (c *Client) InvokeTool(ctx context.Context, name string, args map[string]an
 	}
 
 	if resp.Error != nil {
+		metrics.MCPToolCallsTotal.WithLabelValues(name, "error").Inc()
+		metrics.ErrorsTotal.WithLabelValues("mcp").Inc()
 		return nil, fmt.Errorf("tool error: %s", resp.Error.Message)
 	}
+
+	metrics.MCPToolCallsTotal.WithLabelValues(name, "ok").Inc()
 
 	if len(resp.Result.Content) > 0 {
 		item := resp.Result.Content[0]
