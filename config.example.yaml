@@ -2,6 +2,8 @@
 # Environment variable overrides: ASSISTANT_LISTEN_ADDR, ASSISTANT_GRAFANA_URL,
 # ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS, ASSISTANT_DB_PATH,
 # ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL
+#
+# Secrets can also be placed in a .env file (auto-loaded from working directory).
 
 # Address to listen on (host:port)
 listen_addr: ":8080"
@@ -28,9 +30,20 @@ db_path: "data/assistant.db"
 # OpenAI model (default: gpt-4o)
 openai_model: "gpt-4o"
 
-# MCP servers for tool integration
-# mcp_servers:
-#   - url: "http://localhost:8081"
-#     type: "alertmanager"
-#   - url: "http://localhost:8082"
-#     type: "grafana"
+# Security settings
+# allowed_origin: "http://localhost:8080"   # CORS origin (auto-derived from listen_addr if blank)
+# max_message_length: 16000                 # Max chat message chars
+# max_body_size: 65536                      # Max request body bytes
+# rate_limit_per_minute: 20                 # Chat requests per user per minute
+# rate_limit_burst: 5                       # Burst allowance
+
+# MCP servers for tool integration (SSE transport).
+# Each server must be running in SSE mode before the assistant starts.
+# Start them with: make mcp-start
+mcp_servers:
+  - url: "http://localhost:8000"
+    type: "alertmanager"
+  - url: "http://localhost:8001"
+    type: "grafana"
+  - url: "http://localhost:8002"
+    type: "genesyscloud"

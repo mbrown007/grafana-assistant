@@ -13,6 +13,19 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     return normalized;
   };
 
+  const isSafeUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url, window.location.href);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
+  const sanitizeLanguage = (lang: string): string => {
+    return lang.replace(/[^a-zA-Z0-9-]/g, '') || 'plaintext';
+  };
+
   const parseInlineMarkdown = (text: string): Array<React.ReactNode> => {
     const elements: Array<React.ReactNode> = [];
     let lastIndex = 0;
@@ -35,11 +48,15 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           </code>
         );
       } else if (match[6] && match[7]) {
-        elements.push(
-          <a key={`link-${key++}`} href={match[7]} target="_blank" rel="noreferrer">
-            {match[6]}
-          </a>
-        );
+        if (isSafeUrl(match[7])) {
+          elements.push(
+            <a key={`link-${key++}`} href={match[7]} target="_blank" rel="noreferrer">
+              {match[6]}
+            </a>
+          );
+        } else {
+          elements.push(<span key={`link-${key++}`}>{match[6]}</span>);
+        }
       }
       lastIndex = regex.lastIndex;
     }
@@ -66,7 +83,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       }
 
       if (line.trim().startsWith('```')) {
-        const language = line.trim().slice(3) || 'plaintext';
+        const language = sanitizeLanguage(line.trim().slice(3));
         const codeLines: string[] = [];
         i += 1;
         while (i < lines.length && !lines[i].trim().startsWith('```')) {

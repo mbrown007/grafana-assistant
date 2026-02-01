@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
         '/grafana': {
           target: proxyTarget,
           changeOrigin: true,
+          ws: true,
         },
       },
     },

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, X } from 'lucide-react';
-import type { DashboardContext, HistorySession, Message, ToolCall } from '../types';
-import { chatApi, historyApi } from '../services/api';
+import type { CurrentUser, DashboardContext, HistorySession, Message, ToolCall } from '../types';
+import { chatApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
 
@@ -26,6 +26,9 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
   const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const contextLabel = useMemo(() => {
@@ -44,9 +47,27 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const loadCurrentUser = useCallback(async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const user = await userApi.get();
+      setCurrentUser(user);
+    } catch (error) {
+      setCurrentUser(null);
+      setAuthError(error instanceof Error ? error.message : 'Failed to confirm Grafana login');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    void loadCurrentUser();
+  }, [loadCurrentUser]);
 
   const appendMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
@@ -118,7 +139,7 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
 
   const sendMessage = useCallback(
     async (messageText: string) => {
-      if (!messageText.trim() || isLoading) {
+      if (!messageText.trim() || isLoading || !currentUser) {
         return;
       }
 
@@ -227,15 +248,23 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
   };
 
   const handleSuggestion = (suggestion: string) => {
+    if (!currentUser || authLoading) {
+      return;
+    }
     setInput(suggestion);
   };
+
+  const chatDisabled = authLoading || !currentUser;
 
   return (
     <div className="chat-panel">
       <div className="chat-header">
         <div>
           <div className="chat-title">Assistant</div>
-          <div className="chat-subtitle">{contextLabel}</div>
+          <div className="chat-subtitle">
+            {contextLabel}
+            {currentUser ? ` · ${currentUser.login}` : ''}
+          </div>
         </div>
         <div className="chat-header-actions">
           <button
@@ -259,7 +288,7 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
               <button type="button" onClick={startNewChat}>
                 <Plus size={14} /> New chat
               </button>
-              <button type="button" onClick={openHistory}>
+              <button type="button" onClick={openHistory} disabled={chatDisabled}>
                 <History size={14} /> Previous chats
               </button>
             </div>
@@ -271,20 +300,44 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
         {messages.length === 0 ? (
           <div className="chat-empty">
             <div className="chat-empty-card">
-              <h3>Ask about this dashboard</h3>
-              <p>Stream answers, tool calls, and artifacts side-by-side with Grafana.</p>
-              <div className="chip-row">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="chip"
-                    onClick={() => handleSuggestion(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+              {chatDisabled ? (
+                <>
+                  <h3>Waiting for Grafana login</h3>
+                  <p>
+                    {authLoading
+                      ? 'Confirming your Grafana session...'
+                      : 'Log into Grafana in the left pane to start a chat.'}
+                  </p>
+                  {authError && <p className="chat-error">{authError}</p>}
+                  <div className="chip-row">
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => void loadCurrentUser()}
+                      disabled={authLoading}
+                    >
+                      Retry login
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>Ask about this dashboard</h3>
+                  <p>Stream answers, tool calls, and artifacts side-by-side with Grafana.</p>
+                  <div className="chip-row">
+                    {SUGGESTIONS.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="chip"
+                        onClick={() => handleSuggestion(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -349,8 +402,9 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
           onChange={(event) => setInput(event.target.value)}
           placeholder="Ask about this dashboard..."
           type="text"
+          disabled={chatDisabled}
         />
-        <button type="submit" disabled={isLoading || !input.trim()}>
+        <button type="submit" disabled={isLoading || !input.trim() || chatDisabled}>
           {isLoading ? <Loader2 size={16} /> : <Send size={16} />}
         </button>
       </form>

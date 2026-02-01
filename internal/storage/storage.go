@@ -19,6 +19,7 @@ type Session struct {
 	ID        string    `json:"id"`
 	UserID    int64     `json:"user_id"`
 	OrgID     int64     `json:"org_id"`
+	DashboardUID string `json:"dashboard_uid,omitempty"`
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -33,17 +34,35 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// AuditEntry represents an audit log entry for chat activity.
+type AuditEntry struct {
+	ID          string    `json:"id"`
+	SessionID   string    `json:"session_id"`
+	UserID      int64     `json:"user_id"`
+	OrgID       int64     `json:"org_id"`
+	DashboardUID string   `json:"dashboard_uid,omitempty"`
+	EventType   string    `json:"event_type"` // user_message, tool_call, assistant_response
+	ToolName    string    `json:"tool_name,omitempty"`
+	Request     string    `json:"request,omitempty"`
+	Response    string    `json:"response,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 // Store defines the interface for persistent storage.
 type Store interface {
 	// Sessions
 	CreateSession(ctx context.Context, session *Session) error
 	GetSession(ctx context.Context, id string) (*Session, error)
-	ListSessions(ctx context.Context, userID, orgID int64) ([]Session, error)
+	ListSessions(ctx context.Context, userID, orgID int64, dashboardUID string) ([]Session, error)
+	UpdateSessionMeta(ctx context.Context, id, title, dashboardUID string, updatedAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 
 	// Messages
 	AddMessage(ctx context.Context, msg *Message) error
 	GetMessages(ctx context.Context, sessionID string) ([]Message, error)
+
+	// Audit log
+	AddAuditEntry(ctx context.Context, entry *AuditEntry) error
 
 	// Maintenance
 	PurgeOlderThan(ctx context.Context, before time.Time) (int64, error)

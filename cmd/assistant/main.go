@@ -23,6 +23,7 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
 	"github.com/marcusz/monitoring-assistant/internal/llm"
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/marcusz/monitoring-assistant/internal/middleware"
 	"github.com/marcusz/monitoring-assistant/internal/proxy"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
@@ -209,14 +210,13 @@ func main() {
 
 	// Chat API (SSE streaming)
 	if llmClient != nil {
-		mux.HandleFunc("POST /api/chat", api.ChatHandler(func(r *http.Request, req api.ChatRequest, streamFn func(api.StreamChunk)) {
-			user, err := sessionResolver.Resolve(r.Context(), r)
-			if err != nil {
-				streamFn(api.StreamChunk{Type: "error", Message: "unauthorized"})
-				return
-			}
-			agentMgr.HandleChat(r.Context(), user, req, streamFn)
-		}))
+		mux.HandleFunc("POST /api/chat", api.AuthenticatedChatHandlerWithLimit(
+			sessionResolver,
+			func(r *http.Request, user *grafana.User, req api.ChatRequest, streamFn func(api.StreamChunk)) {
+				agentMgr.HandleChat(r.Context(), user, req, streamFn)
+			},
+			cfg.MaxMessageLength,
+		))
 		slog.Info("chat endpoint registered")
 	} else {
 		mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +228,7 @@ func main() {
 	mux.HandleFunc("GET /api/history", api.HistoryListHandler(store, sessionResolver))
 	mux.HandleFunc("GET /api/history/{id}", api.HistoryDetailHandler(store, sessionResolver))
 	mux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
+	mux.HandleFunc("GET /api/me", api.CurrentUserHandler(sessionResolver))
 
 	// Grafana reverse proxy
 	grafanaHandler, err := proxy.GrafanaHandler(cfg.GrafanaURL)
@@ -245,10 +246,30 @@ func main() {
 	}
 	mux.Handle("/", spa)
 
+	// Derive CORS allowed origin.
+	allowedOrigin := cfg.AllowedOrigin
+	if allowedOrigin == "" {
+		allowedOrigin = middleware.DeriveAllowedOrigin(cfg.ListenAddr)
+	}
+
+	// Rate limiter.
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitPerMin, cfg.RateLimitBurst)
+
+	// Middleware chain: SecurityHeaders → CORS → CSRFCheck → RateLimit → BodyLimit → mux
+	var handler http.Handler = mux
+	handler = middleware.BodyLimit(cfg.MaxBodySize, handler)
+	handler = rateLimiter.Middleware(handler)
+	handler = middleware.CSRFCheck(handler)
+	handler = middleware.CORS(allowedOrigin, handler)
+	handler = middleware.SecurityHeaders(handler)
+
 	// Graceful shutdown.
 	srv := &http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: mux,
+		Addr:         cfg.ListenAddr,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second, // SSE needs long writes
+		IdleTimeout:  120 * time.Second,
 	}
 
 	go func() {

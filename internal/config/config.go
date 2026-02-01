@@ -1,10 +1,13 @@
 package config
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,14 +33,58 @@ type Config struct {
 
 	// MCP servers.
 	MCPServers []MCPServer `yaml:"mcp_servers"`
+
+	// Security settings.
+	AllowedOrigin     string `yaml:"allowed_origin"`
+	MaxMessageLength  int    `yaml:"max_message_length"`
+	MaxBodySize       int64  `yaml:"max_body_size"`
+	RateLimitPerMin   int    `yaml:"rate_limit_per_minute"`
+	RateLimitBurst    int    `yaml:"rate_limit_burst"`
+}
+
+// loadDotEnv reads a .env file and sets any variables not already present
+// in the environment. This is a best-effort operation; missing files are
+// silently ignored.
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		val = strings.Trim(val, `"'`)
+		// Don't override values already set in the real environment.
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, val)
+		}
+	}
 }
 
 func Load(path string) (*Config, error) {
+	// Load .env from the working directory (best-effort).
+	loadDotEnv(".env")
+
 	cfg := &Config{
 		ListenAddr:        ":8080",
 		DataRetentionDays: 30,
 		DBPath:            "data/assistant.db",
 		OpenAIModel:       "gpt-4o",
+		MaxMessageLength:  16000,
+		MaxBodySize:       65536,
+		RateLimitPerMin:   20,
+		RateLimitBurst:    5,
 	}
 
 	data, err := os.ReadFile(path)
@@ -81,6 +128,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
+	checkFilePermissions(path)
+	checkFilePermissions(".env")
+
 	return cfg, nil
 }
 
@@ -95,4 +145,20 @@ func (c *Config) Validate() error {
 		return errors.New("data_retention_days must be >= 1")
 	}
 	return nil
+}
+
+// checkFilePermissions warns if a file is world-readable.
+func checkFilePermissions(path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return // file doesn't exist or inaccessible — nothing to warn about
+	}
+	mode := info.Mode().Perm()
+	if mode&0o077 != 0 {
+		slog.Warn("file has overly permissive permissions",
+			"path", path,
+			"mode", fmt.Sprintf("%04o", mode),
+			"recommendation", "chmod 600 "+path,
+		)
+	}
 }

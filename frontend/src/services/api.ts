@@ -1,4 +1,4 @@
-import type { ChatRequest, StreamChunk } from '../types';
+import type { ChatRequest, CurrentUser, HistoryDetail, HistorySession, StreamChunk } from '../types';
 
 async function* streamResponse(response: Response): AsyncGenerator<StreamChunk> {
   if (!response.body) {
@@ -51,6 +51,7 @@ export const chatApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
       },
       body: JSON.stringify(payload),
     });
@@ -61,5 +62,50 @@ export const chatApi = {
     }
 
     yield* streamResponse(response);
+  },
+};
+
+export const historyApi = {
+  async list(): Promise<HistorySession[]> {
+    const response = await fetch('/api/history');
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+    return (await response.json()) as HistorySession[];
+  },
+  async get(id: string): Promise<HistoryDetail> {
+    const response = await fetch(`/api/history/${id}`);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+    return (await response.json()) as HistoryDetail;
+  },
+  async remove(id: string): Promise<void> {
+    const response = await fetch(`/api/history/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+  },
+};
+
+export const userApi = {
+  async get(): Promise<CurrentUser> {
+    const response = await fetch('/api/me');
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const message = await response.text();
+      throw new Error(message || 'Unexpected response while checking Grafana login.');
+    }
+    return (await response.json()) as CurrentUser;
   },
 };

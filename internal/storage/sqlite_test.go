@@ -27,6 +27,7 @@ func TestSessionCRUD(t *testing.T) {
 		ID:        "sess-1",
 		UserID:    42,
 		OrgID:     1,
+		DashboardUID: "dash-1",
 		Title:     "Test Session",
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -49,14 +50,34 @@ func TestSessionCRUD(t *testing.T) {
 	if got.UserID != 42 {
 		t.Errorf("UserID = %d, want 42", got.UserID)
 	}
+	if got.DashboardUID != "dash-1" {
+		t.Errorf("DashboardUID = %q, want %q", got.DashboardUID, "dash-1")
+	}
 
 	// List
-	sessions, err := db.ListSessions(ctx, 42, 1)
+	sessions, err := db.ListSessions(ctx, 42, 1, "")
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("ListSessions returned %d sessions, want 1", len(sessions))
+	}
+
+	// List with dashboard filter
+	filtered, err := db.ListSessions(ctx, 42, 1, "dash-1")
+	if err != nil {
+		t.Fatalf("ListSessions filter: %v", err)
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("ListSessions filter returned %d sessions, want 1", len(filtered))
+	}
+
+	filtered, err = db.ListSessions(ctx, 42, 1, "other")
+	if err != nil {
+		t.Fatalf("ListSessions filter (other): %v", err)
+	}
+	if len(filtered) != 0 {
+		t.Fatalf("ListSessions filter (other) returned %d sessions, want 0", len(filtered))
 	}
 
 	// Not found
@@ -66,6 +87,17 @@ func TestSessionCRUD(t *testing.T) {
 	}
 	if got != nil {
 		t.Error("GetSession should return nil for nonexistent session")
+	}
+
+	if err := db.UpdateSessionMeta(ctx, "sess-1", "Updated Title", "dash-2", now.Add(time.Minute)); err != nil {
+		t.Fatalf("UpdateSessionMeta: %v", err)
+	}
+	got, err = db.GetSession(ctx, "sess-1")
+	if err != nil {
+		t.Fatalf("GetSession after update: %v", err)
+	}
+	if got.Title != "Updated Title" || got.DashboardUID != "dash-2" {
+		t.Errorf("UpdateSessionMeta mismatch: %+v", got)
 	}
 }
 
@@ -164,8 +196,46 @@ func TestPurgeOlderThan(t *testing.T) {
 		t.Errorf("deleted = %d, want 1", deleted)
 	}
 
-	sessions, _ := db.ListSessions(ctx, 1, 1)
+	sessions, _ := db.ListSessions(ctx, 1, 1, "")
 	if len(sessions) != 1 || sessions[0].ID != "new-sess" {
 		t.Errorf("expected only new-sess to remain, got %v", sessions)
+	}
+}
+
+func TestAuditLogInsert(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	sess := &Session{
+		ID: "sess-1", UserID: 1, OrgID: 1,
+		DashboardUID: "dash-1",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.CreateSession(ctx, sess); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	entry := &AuditEntry{
+		ID:           "audit-1",
+		SessionID:    "sess-1",
+		UserID:       1,
+		OrgID:        1,
+		DashboardUID: "dash-1",
+		EventType:    "assistant_response",
+		Response:     "hello",
+		CreatedAt:    now,
+	}
+	if err := db.AddAuditEntry(ctx, entry); err != nil {
+		t.Fatalf("AddAuditEntry: %v", err)
+	}
+
+	var count int
+	row := db.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE session_id = ?`, "sess-1")
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("scan audit count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("audit count = %d, want 1", count)
 	}
 }

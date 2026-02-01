@@ -252,6 +252,11 @@ body {
   color: var(--text-muted);
 }
 
+.chat-error {
+  color: #f87171;
+  margin: -8px 0 16px;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;

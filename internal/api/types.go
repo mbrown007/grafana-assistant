@@ -1,6 +1,9 @@
 package api
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ArtifactData represents a rich data visualization embedded in assistant responses.
 type ArtifactData struct {
@@ -45,6 +48,7 @@ type ReportSection struct {
 type StreamChunk struct {
 	Type      string                 `json:"type"`
 	Message   string                 `json:"message,omitempty"`
+	SessionID string                 `json:"session_id,omitempty"`
 	Tool      string                 `json:"tool,omitempty"`
 	ToolID    string                 `json:"tool_id,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
@@ -69,4 +73,24 @@ type DashboardContext struct {
 type ChatResponse struct {
 	Response  string `json:"response"`
 	SessionID string `json:"session_id"`
+}
+
+type HistorySession struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	DashboardUID string   `json:"dashboard_uid,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type HistoryMessage struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type HistoryDetail struct {
+	Session  HistorySession  `json:"session"`
+	Messages []HistoryMessage `json:"messages"`
 }
