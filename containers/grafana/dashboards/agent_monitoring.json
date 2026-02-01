@@ -200,7 +200,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}{{end}}\"",
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}\\nArgs: {{ .request }}\\nResult: {{ .response }}{{end}}\"",
           "refId": "A"
         }
       ],

@@ -1,9 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, X } from 'lucide-react';
+import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, X, Moon } from 'lucide-react';
 import type { CurrentUser, DashboardContext, HistorySession, Message, ToolCall } from '../types';
 import { chatApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
+import { useTheme } from './ThemeProvider';
+import { Button } from './ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Switch } from './ui/switch';
+import { Input } from './ui/input';
+import flavioAvatar from '../assets/flavio.png';
 
 interface ChatPanelProps {
   dashboardContext?: DashboardContext;
@@ -22,7 +36,6 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
-  const [showMenu, setShowMenu] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -32,6 +45,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   const [authError, setAuthError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const lastNavigateRef = useRef<string>('');
+  const { theme, setTheme } = useTheme();
 
   const contextLabel = useMemo(() => {
     if (!dashboardContext) {
@@ -79,7 +93,6 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
     setMessages([]);
     setSessionId(undefined);
     setShowHistory(false);
-    setShowMenu(false);
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -97,7 +110,6 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
 
   const openHistory = useCallback(() => {
     setShowHistory(true);
-    setShowMenu(false);
   }, []);
 
   const handleSelectHistory = useCallback(async (session: HistorySession) => {
@@ -265,44 +277,60 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   };
 
   const chatDisabled = authLoading || !currentUser;
+  const isDarkMode = theme === 'dark';
 
   return (
     <div className="chat-panel">
       <div className="chat-header">
         <div>
-          <div className="chat-title">Assistant</div>
+          <div className="chat-title">Powered by Sabio Monitoring</div>
           <div className="chat-subtitle">
             {contextLabel}
             {currentUser ? ` · ${currentUser.login}` : ''}
           </div>
         </div>
         <div className="chat-header-actions">
-          <button
+          <Button
             type="button"
-            className="hide-chat-button"
+            variant="secondary"
+            size="sm"
             onClick={onHide}
             disabled={!onHide}
           >
             Hide chat
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => setShowMenu((prev) => !prev)}
-            aria-label="Chat menu"
-          >
-            <MoreVertical size={16} />
-          </button>
-          {showMenu && (
-            <div className="chat-menu">
-              <button type="button" onClick={startNewChat}>
-                <Plus size={14} /> New chat
-              </button>
-              <button type="button" onClick={openHistory} disabled={chatDisabled}>
-                <History size={14} /> Previous chats
-              </button>
-            </div>
-          )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="Chat menu">
+                <MoreVertical size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Settings</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={startNewChat}>
+                <Plus size={14} className="mr-2" /> New chat
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={openHistory} disabled={chatDisabled}>
+                <History size={14} className="mr-2" /> Previous chats
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="flex items-center justify-between"
+                onSelect={(event) => event.preventDefault()}
+              >
+                <span className="flex items-center gap-2">
+                  <Moon size={14} />
+                  Dark mode
+                </span>
+                <Switch
+                  checked={isDarkMode}
+                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -332,8 +360,14 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                 </>
               ) : (
                 <>
-                  <h3>Ask about this dashboard</h3>
-                  <p>Stream answers, tool calls, and artifacts side-by-side with Grafana.</p>
+                  <div className="chat-empty-greeting">
+                    <Avatar className="assistant-avatar">
+                      <AvatarImage src={flavioAvatar} alt="Flavio" />
+                      <AvatarFallback>SF</AvatarFallback>
+                    </Avatar>
+                    <p>Hello, my name is Flavio, part of the Sabio Monitoring team.</p>
+                  </div>
+                  <h3>Ask about this dashboard or anything else monitoring related</h3>
                   <div className="chip-row">
                     {SUGGESTIONS.map((suggestion) => (
                       <button
@@ -360,16 +394,26 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
 
             return (
               <div key={message.id} className={`chat-message ${message.role}`}>
-                <div className="message-bubble">
-                  {remainingContent.trim().length > 0 && (
-                    <MarkdownContent content={remainingContent} />
-                  )}
-                  {message.isStreaming && (
-                    <div className="streaming-indicator">
-                      <Loader2 size={16} />
-                      Streaming response...
+                <div className="message-row">
+                  {isAssistant && (
+                    <div className="assistant-avatar-row">
+                      <Avatar className="assistant-avatar">
+                        <AvatarImage src={flavioAvatar} alt="Flavio" />
+                        <AvatarFallback>SF</AvatarFallback>
+                      </Avatar>
                     </div>
                   )}
+                  <div className="message-bubble">
+                    {remainingContent.trim().length > 0 && (
+                      <MarkdownContent content={remainingContent} />
+                    )}
+                    {message.isStreaming && (
+                      <div className="streaming-indicator">
+                        <Loader2 size={16} />
+                        Streaming response...
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {message.toolCalls && message.toolCalls.length > 0 && (
                   <div className="tool-calls">
@@ -407,16 +451,22 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
       </div>
 
       <form className="chat-input" onSubmit={handleSubmit}>
-        <input
+        <Input
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask about this dashboard..."
+          placeholder="Ask about this dashboard or anything else monitoring related..."
           type="text"
           disabled={chatDisabled}
+          className="chat-input-field h-10"
         />
-        <button type="submit" disabled={isLoading || !input.trim() || chatDisabled}>
+        <Button
+          type="submit"
+          size="icon"
+          disabled={isLoading || !input.trim() || chatDisabled}
+          className="chat-input-send"
+        >
           {isLoading ? <Loader2 size={16} /> : <Send size={16} />}
-        </button>
+        </Button>
       </form>
 
       <div className={`history-panel ${showHistory ? 'open' : ''}`}>

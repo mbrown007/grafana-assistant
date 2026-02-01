@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -24,6 +25,7 @@ import (
 )
 
 const maxToolIterations = 5
+const llmUserErrorMessage = "I'm having issues right now. Please try again, and if the issue persists report it to the monitoring team."
 
 // Manager orchestrates the LLM agent loop with tool calling and memory.
 type Manager struct {
@@ -225,7 +227,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 					"session_id", sess.ID,
 					"error", err,
 				)
-				streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
+				streamFn(api.StreamChunk{Type: "error", Message: userFacingLLMError(err)})
 				return
 			}
 			finalContent = m.streamToClient(ch, streamFn)
@@ -241,7 +243,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				"session_id", sess.ID,
 				"error", err,
 			)
-			streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
+			streamFn(api.StreamChunk{Type: "error", Message: userFacingLLMError(err)})
 			return
 		}
 
@@ -263,7 +265,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 						"session_id", sess.ID,
 						"error", err,
 					)
-					streamFn(api.StreamChunk{Type: "error", Message: fmt.Sprintf("LLM error: %v", err)})
+					streamFn(api.StreamChunk{Type: "error", Message: userFacingLLMError(err)})
 					return
 				}
 				finalContent = m.streamToClient(ch, streamFn)
@@ -395,7 +397,7 @@ func (m *Manager) streamToClient(ch <-chan llm.StreamChunk, streamFn func(api.St
 			content += chunk.Message
 			streamFn(api.StreamChunk{Type: "token", Message: chunk.Message})
 		case "error":
-			streamFn(api.StreamChunk{Type: "error", Message: chunk.Message})
+			streamFn(api.StreamChunk{Type: "error", Message: userFacingLLMError(errors.New(chunk.Message))})
 		case "complete":
 			if content == "" {
 				content = chunk.Message
@@ -420,6 +422,19 @@ func sanitizeInput(s string) string {
 		}
 		return r
 	}, s)
+}
+
+func userFacingLLMError(err error) string {
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) && apiErr.HTTPStatusCode == 429 {
+		return llmUserErrorMessage
+	}
+
+	if strings.Contains(err.Error(), "status code: 429") {
+		return llmUserErrorMessage
+	}
+
+	return llmUserErrorMessage
 }
 
 // wrapToolResult wraps tool output with delimiters to help the LLM distinguish

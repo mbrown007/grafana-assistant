@@ -1,6 +1,8 @@
+import type { ReactElement } from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatPanel } from '../ChatPanel';
+import { ThemeProvider } from '../ThemeProvider';
 
 // Mock the API module.
 vi.mock('../../services/api', () => ({
@@ -23,8 +25,10 @@ vi.mock('../../services/api', () => ({
 }));
 
 describe('ChatPanel', () => {
+  const renderWithTheme = (ui: ReactElement) => render(<ThemeProvider>{ui}</ThemeProvider>);
+
   it('shows empty state with suggestions when authenticated', async () => {
-    render(<ChatPanel />);
+    renderWithTheme(<ChatPanel />);
     await waitFor(() => {
       expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
     });
@@ -37,14 +41,14 @@ describe('ChatPanel', () => {
     const { userApi } = await import('../../services/api');
     vi.mocked(userApi.get).mockRejectedValueOnce(new Error('unauthorized'));
 
-    render(<ChatPanel />);
+    renderWithTheme(<ChatPanel />);
     await waitFor(() => {
       expect(screen.getByText('Waiting for Grafana login')).toBeInTheDocument();
     });
   });
 
   it('enables input and submit button when authenticated', async () => {
-    render(<ChatPanel />);
+    renderWithTheme(<ChatPanel />);
 
     // Wait for auth to complete.
     await waitFor(() => {
@@ -56,7 +60,7 @@ describe('ChatPanel', () => {
   });
 
   it('clicking a suggestion fills the input', async () => {
-    render(<ChatPanel />);
+    renderWithTheme(<ChatPanel />);
 
     await waitFor(() => {
       expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
@@ -70,7 +74,7 @@ describe('ChatPanel', () => {
   });
 
   it('displays context label with dashboard info', async () => {
-    render(
+    renderWithTheme(
       <ChatPanel
         dashboardContext={{
           uid: 'abc',
@@ -87,7 +91,7 @@ describe('ChatPanel', () => {
   });
 
   it('shows no dashboard context label when none provided', async () => {
-    render(<ChatPanel />);
+    renderWithTheme(<ChatPanel />);
     await waitFor(() => {
       expect(screen.getByText(/No dashboard context yet/)).toBeInTheDocument();
     });
@@ -107,7 +111,7 @@ describe('ChatPanel', () => {
     });
 
     const onNavigate = vi.fn();
-    const { container } = render(<ChatPanel onNavigate={onNavigate} />);
+    const { container } = renderWithTheme(<ChatPanel onNavigate={onNavigate} />);
 
     await waitFor(() => {
       expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();

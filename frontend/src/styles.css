@@ -1,18 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: 'Space Grotesk', 'IBM Plex Sans', 'Segoe UI', sans-serif;
-  --bg-primary: #0b1020;
-  --bg-secondary: #111827;
-  --bg-elevated: #151f33;
-  --bg-soft: #1f2937;
-  --accent: #38bdf8;
-  --accent-2: #f97316;
-  --text-primary: #e2e8f0;
-  --text-muted: #94a3b8;
-  --border: #273449;
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+  --radius: 0.75rem;
+  --brand: 199 89% 48%;
+  --brand-foreground: 0 0% 100%;
+  --bg-primary: hsl(var(--background));
+  --bg-secondary: hsl(var(--card));
+  --bg-elevated: hsl(var(--popover));
+  --bg-soft: hsl(var(--secondary));
+  --text-primary: hsl(var(--foreground));
+  --text-muted: hsl(var(--muted-foreground));
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #e11d48;
+  --app-background: radial-gradient(circle at top left, #f8fafc 0%, #e2e8f0 35%, #cbd5f5 100%);
+  --pane-background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(226, 232, 240, 0.98));
+}
+
+.dark {
+  color-scheme: dark;
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+  --brand: 199 89% 48%;
+  --brand-foreground: 0 0% 100%;
+  --bg-primary: hsl(var(--background));
+  --bg-secondary: hsl(var(--card));
+  --bg-elevated: hsl(var(--popover));
+  --bg-soft: hsl(var(--secondary));
+  --text-primary: hsl(var(--foreground));
+  --text-muted: hsl(var(--muted-foreground));
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #f43f5e;
+  --app-background: radial-gradient(circle at top left, #1f2937 0%, #0b1020 40%, #070b14 100%);
+  --pane-background: linear-gradient(180deg, rgba(12, 18, 32, 0.98), rgba(10, 16, 28, 0.98));
 }
 
 * {
@@ -22,7 +83,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, #1f2937 0%, #0b1020 40%, #070b14 100%);
+  background: var(--app-background);
   color: var(--text-primary);
 }
 
@@ -44,7 +105,7 @@ body {
 
 .grafana-pane {
   flex: 1;
-  background: #0b1020;
+  background: var(--bg-primary);
   position: relative;
 }
 
@@ -83,8 +144,8 @@ body {
 
 .chat-pane {
   width: 380px;
-  background: linear-gradient(180deg, rgba(12, 18, 32, 0.98), rgba(10, 16, 28, 0.98));
-  border-left: 1px solid var(--border);
+  background: var(--pane-background);
+  border-left: 1px solid hsl(var(--border));
   transition: width 0.25s ease, opacity 0.25s ease;
   overflow: hidden;
 }
@@ -107,7 +168,7 @@ body {
   max-width: 360px;
   box-sizing: border-box;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid hsl(var(--border));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -122,7 +183,7 @@ body {
 }
 
 .hide-chat-button {
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-radius: 10px;
@@ -133,7 +194,7 @@ body {
 }
 
 .hide-chat-button:hover {
-  border-color: var(--accent);
+  border-color: hsl(var(--brand));
 }
 
 .hide-chat-button:disabled {
@@ -142,7 +203,7 @@ body {
 }
 
 .icon-button {
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid hsl(var(--border));
   background: transparent;
   color: var(--text-muted);
   padding: 6px;
@@ -154,7 +215,7 @@ body {
 }
 
 .icon-button:hover {
-  border-color: var(--accent);
+  border-color: hsl(var(--brand));
   color: var(--text-primary);
 }
 
@@ -168,7 +229,7 @@ body {
   right: 0;
   top: 42px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
   padding: 8px;
   display: grid;
@@ -191,12 +252,15 @@ body {
 }
 
 .chat-menu button:hover {
-  background: rgba(148, 163, 184, 0.12);
+  background: hsl(var(--accent));
 }
 
 .chat-title {
   font-size: 16px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-subtitle {
@@ -209,7 +273,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px dashed rgba(148, 163, 184, 0.3);
+  border: 1px dashed hsl(var(--border));
   background: transparent;
   color: var(--text-muted);
   padding: 6px 10px;
@@ -219,7 +283,7 @@ body {
 }
 
 .ghost-button:hover {
-  border-color: var(--accent);
+  border-color: hsl(var(--brand));
   color: var(--text-primary);
 }
 
@@ -245,9 +309,22 @@ body {
   background: var(--bg-elevated);
   padding: 24px;
   border-radius: 16px;
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   text-align: center;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.chat-empty-greeting {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  margin-bottom: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.chat-empty-greeting p {
+  margin: 0;
 }
 
 .chat-empty-card h3 {
@@ -272,9 +349,9 @@ body {
 }
 
 .chip {
-  background: rgba(148, 163, 184, 0.1);
+  background: hsl(var(--accent));
   color: var(--text-primary);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid hsl(var(--border));
   padding: 6px 10px;
   border-radius: 999px;
   cursor: pointer;
@@ -291,18 +368,48 @@ body {
   align-items: flex-end;
 }
 
+.message-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-message.user .message-row {
+  align-items: flex-end;
+}
+
+.assistant-avatar {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  height: 40px;
+  width: 40px;
+}
+
+.assistant-avatar-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: -12px;
+  padding-left: 6px;
+  z-index: 1;
+}
+
+.chat-message.assistant .message-bubble {
+  padding-top: 18px;
+}
+
 .message-bubble {
   max-width: 95%;
   padding: 12px 14px;
   border-radius: 14px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   line-height: 1.5;
 }
 
 .chat-message.user .message-bubble {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.4);
+  background: color-mix(in srgb, hsl(var(--brand)) 14%, transparent);
+  border-color: color-mix(in srgb, hsl(var(--brand)) 45%, hsl(var(--border)));
 }
 
 .streaming-indicator {
@@ -325,9 +432,9 @@ body {
 }
 
 .tool-call {
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.8);
+  background: var(--bg-secondary);
   padding: 8px 12px;
 }
 
@@ -347,7 +454,7 @@ body {
 
 .tool-body pre {
   margin: 0;
-  background: #0b1220;
+  background: var(--bg-soft);
   border-radius: 8px;
   padding: 8px;
   overflow-x: auto;
@@ -365,10 +472,10 @@ body {
 }
 
 .artifact-card {
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 16px;
   padding: 16px;
-  background: rgba(17, 24, 39, 0.9);
+  background: var(--bg-secondary);
 }
 
 .artifact-header {
@@ -409,8 +516,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid hsl(var(--border));
+  background: var(--bg-soft);
 }
 
 .metric-label {
@@ -438,23 +545,23 @@ body {
 }
 
 .metric-blue {
-  border-color: rgba(56, 189, 248, 0.4);
+  border-color: color-mix(in srgb, hsl(var(--brand)) 45%, hsl(var(--border)));
 }
 
 .metric-green {
-  border-color: rgba(34, 197, 94, 0.5);
+  border-color: color-mix(in srgb, var(--success) 45%, hsl(var(--border)));
 }
 
 .metric-red {
-  border-color: rgba(244, 63, 94, 0.5);
+  border-color: color-mix(in srgb, var(--danger) 45%, hsl(var(--border)));
 }
 
 .metric-amber {
-  border-color: rgba(245, 158, 11, 0.5);
+  border-color: color-mix(in srgb, var(--warning) 45%, hsl(var(--border)));
 }
 
 .metric-purple {
-  border-color: rgba(167, 139, 250, 0.5);
+  border-color: color-mix(in srgb, #a78bfa 45%, hsl(var(--border)));
 }
 
 .artifact-table table {
@@ -466,7 +573,7 @@ body {
 .artifact-table th,
 .artifact-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .artifact-table th {
@@ -492,7 +599,7 @@ body {
 
 .artifact-raw {
   white-space: pre-wrap;
-  background: #0b1220;
+  background: var(--bg-soft);
   padding: 12px;
   border-radius: 12px;
   color: var(--text-muted);
@@ -503,43 +610,25 @@ body {
   max-width: 360px;
   box-sizing: border-box;
   padding: 16px 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid hsl(var(--border));
   display: flex;
   gap: 10px;
 }
 
-.chat-input input {
+.chat-input-field {
   flex: 1;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  padding: 10px 12px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
 }
 
-.chat-input button {
-  border: none;
-  background: var(--accent);
-  color: #0b1020;
-  border-radius: 12px;
-  padding: 10px 14px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.chat-input button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.chat-input-send {
+  height: 40px;
+  width: 40px;
 }
 
 .history-panel {
   position: absolute;
   inset: 0;
-  background: rgba(8, 12, 22, 0.98);
-  border-left: 1px solid var(--border);
+  background: var(--bg-primary);
+  border-left: 1px solid hsl(var(--border));
   transform: translateX(100%);
   transition: transform 0.25s ease;
   display: flex;
@@ -553,7 +642,7 @@ body {
 
 .history-header {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid hsl(var(--border));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -592,14 +681,14 @@ body {
 }
 
 .history-item {
-  border: 1px solid var(--border);
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
   padding: 10px;
   display: flex;
   justify-content: space-between;
   gap: 8px;
   align-items: center;
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--bg-secondary);
 }
 
 .history-item button {
@@ -622,7 +711,7 @@ body {
 }
 
 .markdown a {
-  color: var(--accent);
+  color: hsl(var(--brand));
 }
 
 .md-paragraph {
@@ -639,7 +728,7 @@ body {
 }
 
 .inline-code {
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--bg-soft);
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 0.9em;
@@ -648,7 +737,7 @@ body {
 }
 
 .code-block {
-  background: #0b1220;
+  background: var(--bg-soft);
   border-radius: 12px;
   padding: 12px;
   overflow-x: auto;
