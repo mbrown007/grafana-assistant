@@ -30,6 +30,12 @@ cmd/assistant/static/*
 # Node
 node_modules/
 
+# Dev logs and pid files
+.dev-*.log
+.dev-*.pid
+.mcp-*.log
+.mcp-*.pid
+
 # IDE
 .idea/
 .vscode/
