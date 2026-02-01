@@ -3,7 +3,12 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -11,11 +16,19 @@ import (
 
 // SQLite implements Store using a local SQLite database.
 type SQLite struct {
-	db *sql.DB
+	db       *sql.DB
+	audit    *auditWriter
+	auditMu  sync.Mutex
 }
 
 // NewSQLite opens (or creates) a SQLite database at path and runs migrations.
 func NewSQLite(path string) (*SQLite, error) {
+	return NewSQLiteWithAudit(path, "")
+}
+
+// NewSQLiteWithAudit opens (or creates) a SQLite database at path and optionally
+// configures a JSONL audit log file.
+func NewSQLiteWithAudit(path, auditLogPath string) (*SQLite, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -27,6 +40,14 @@ func NewSQLite(path string) (*SQLite, error) {
 	}
 
 	s := &SQLite{db: db}
+	if auditLogPath != "" {
+		audit, err := openAuditWriter(auditLogPath)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("open audit log: %w", err)
+		}
+		s.audit = audit
+	}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -247,7 +268,15 @@ func (s *SQLite) AddAuditEntry(ctx context.Context, entry *AuditEntry) error {
 		entry.ID, entry.SessionID, entry.UserID, entry.OrgID, entry.DashboardUID, entry.EventType, entry.ToolName,
 		entry.Request, entry.Response, entry.CreatedAt.Format(time.RFC3339),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if s.audit != nil {
+		if err := s.writeAuditEntry(entry); err != nil {
+			slog.Error("failed to write audit log", "error", err)
+		}
+	}
+	return nil
 }
 
 // GetMessages returns all messages for a session in chronological order.
@@ -290,5 +319,48 @@ func (s *SQLite) PurgeOlderThan(ctx context.Context, before time.Time) (int64, e
 
 // Close closes the database connection.
 func (s *SQLite) Close() error {
+	if s.audit != nil {
+		_ = s.audit.Close()
+	}
 	return s.db.Close()
+}
+
+type auditWriter struct {
+	file    *os.File
+	encoder *json.Encoder
+}
+
+func openAuditWriter(path string) (*auditWriter, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	if err != nil {
+		return nil, err
+	}
+	return &auditWriter{
+		file:    file,
+		encoder: json.NewEncoder(file),
+	}, nil
+}
+
+func (s *SQLite) writeAuditEntry(entry *AuditEntry) error {
+	s.auditMu.Lock()
+	defer s.auditMu.Unlock()
+
+	record := map[string]any{
+		"id":            entry.ID,
+		"session_id":    entry.SessionID,
+		"user_id":       entry.UserID,
+		"org_id":        entry.OrgID,
+		"dashboard_uid": entry.DashboardUID,
+		"event_type":    entry.EventType,
+		"event":         entry.EventType,
+		"tool_name":     entry.ToolName,
+		"request":       entry.Request,
+		"response":      entry.Response,
+		"created_at":    entry.CreatedAt.Format(time.RFC3339),
+	}
+	return s.audit.encoder.Encode(record)
 }

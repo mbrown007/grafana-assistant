@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "monitoring-assistant"
+    orgId: 1
+    folder: "Monitoring Assistant"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/dashboards

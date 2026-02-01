@@ -30,6 +30,7 @@ type Config struct {
 	DataRetentionDays int    `yaml:"data_retention_days"`
 	ScratchpadTTLDays int    `yaml:"scratchpad_ttl_days"`
 	ScratchpadFolder  string `yaml:"scratchpad_folder"`
+	AuditLogPath      string `yaml:"audit_log_path"`
 
 	// Database path for SQLite (default: data/assistant.db).
 	DBPath string `yaml:"db_path"`
@@ -102,6 +103,7 @@ func Load(path string) (*Config, error) {
 		KBMaxSectionChars: 2000,
 		ScratchpadTTLDays: 7,
 		ScratchpadFolder:  "Assistant Scratchpads",
+		AuditLogPath:      "/var/log/grafana-assistant/audit.log",
 		MetricsEnabled:    true,
 		MaxMessageLength:  16000,
 		MaxBodySize:       65536,
@@ -148,6 +150,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("ASSISTANT_DB_PATH"); v != "" {
 		cfg.DBPath = v
+	}
+	if v := os.Getenv("ASSISTANT_AUDIT_LOG_PATH"); v != "" {
+		cfg.AuditLogPath = v
 	}
 	if v := os.Getenv("ASSISTANT_OPENAI_API_KEY"); v != "" {
 		cfg.OpenAIAPIKey = v

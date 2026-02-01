@@ -11,9 +11,9 @@ listen_addr: ":8080"
 # Grafana base URL (required).
 # Grafana must be configured with serve_from_sub_path=true and
 # root_url pointing to this app's /grafana/ path, e.g.:
-#   GF_SERVER_ROOT_URL=http://localhost:8080/grafana/
+#   GF_SERVER_ROOT_URL=http://localhost:13000/grafana/
 #   GF_SERVER_SERVE_FROM_SUB_PATH=true
-grafana_url: "http://localhost:3000"
+grafana_url: "http://localhost:13000"
 
 # Grafana service account token (for API access to dashboards)
 # grafana_token: "glsa_..."
@@ -25,6 +25,10 @@ scratchpad_folder: "Assistant Scratchpads"
 
 # SQLite database path (default: data/assistant.db)
 db_path: "data/assistant.db"
+
+# Audit log path (JSONL). Ensure the directory exists and is writable.
+# Set to empty string to disable file auditing.
+audit_log_path: "/var/log/grafana-assistant/audit.log"
 
 # OpenAI API key (required for chat assistant)
 # openai_api_key: "sk-..."

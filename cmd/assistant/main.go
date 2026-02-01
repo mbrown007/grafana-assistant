@@ -206,7 +206,7 @@ func main() {
 	}
 
 	// Initialize SQLite storage.
-	store, err := storage.NewSQLite(cfg.DBPath)
+	store, err := storage.NewSQLiteWithAudit(cfg.DBPath, cfg.AuditLogPath)
 	if err != nil {
 		slog.Error("failed to open database", "error", err)
 		os.Exit(1)

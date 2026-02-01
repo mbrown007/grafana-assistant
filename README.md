@@ -6,7 +6,7 @@ A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered c
 
 - Go 1.25+
 - Node.js 18+ (for frontend build)
-- Docker (for the Grafana/OTEL-LGTM stack)
+- Docker (for the Grafana/Prometheus/Alertmanager dev-test stack)
 - OpenAI API key
 
 ## Quick start
@@ -14,23 +14,19 @@ A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered c
 ### 1. Start the observability stack
 
 ```bash
-cd /path/to/docker-otel-lgtm
+docker compose -f dev-test-docker-compose.yml up -d --wait
 ```
 
-Add the following to `.env` (required for subpath proxying and iframe embedding):
+This starts:
+- Grafana: http://localhost:13000/grafana (admin/admin, anonymous admin enabled)
+- Prometheus: http://localhost:19090
+- Alertmanager: http://localhost:19093
+- Loki: http://localhost:13100
 
-```
-GF_SERVER_ROOT_URL=http://localhost:8081/grafana/
-GF_SERVER_SERVE_FROM_SUB_PATH=true
-GF_AUTH_ANONYMOUS_ENABLED=true
-GF_SECURITY_ALLOW_EMBEDDING=true
-```
-
-Then start the container:
-
-```bash
-./run-lgtm.sh
-```
+Prometheus is configured to scrape the assistant at `http://host.docker.internal:8081/metrics`.
+Promtail tails the audit log at `/var/log/grafana-assistant/*.log` (see `audit_log_path` in config).
+If you don’t have permission to write there, set `audit_log_path` to a writable location.
+You can also run `make audit-log-dir` to create the directory and log file.
 
 ### 2. Configure the assistant
 
@@ -38,14 +34,14 @@ Then start the container:
 cp config.example.yaml config.yaml
 ```
 
-Edit `config.yaml` — at minimum set `grafana_url` and `listen_addr`. The defaults expect Grafana at `http://localhost:3000` and the assistant on `:8081`.
+Edit `config.yaml` — at minimum set `grafana_url` and `listen_addr`. The defaults expect Grafana at `http://localhost:13000` (served from `/grafana`) and the assistant on `:8081`.
 
 Put secrets in `.env` (auto-loaded at startup, gitignored):
 
 ```bash
 ASSISTANT_OPENAI_API_KEY=sk-...
-ALERTMANAGER_URL=http://localhost:9093
-GRAFANA_URL=http://localhost:3000
+ALERTMANAGER_URL=http://localhost:19093
+GRAFANA_URL=http://localhost:13000
 GRAFANA_USERNAME=admin
 GRAFANA_PASSWORD=admin
 ```
@@ -80,7 +76,7 @@ This builds and starts the MCP servers, Go backend, and Vite frontend dev server
 | Command | Description |
 |---|---|
 | `make build` | Build the Go backend binary to `bin/assistant` |
-| `make frontend-build` | Build frontend into `static/` for Go embedding |
+| `make frontend-build` | Build frontend into `frontend/dist/` for Go embedding |
 | `make package` | Build frontend + Go binary for single-file deploy |
 | `make mcp-build` | Build all MCP server binaries to `bin/` |
 
@@ -90,6 +86,7 @@ This builds and starts the MCP servers, Go backend, and Vite frontend dev server
 |---|---|
 | `make mcp-start` | Build and start all MCP servers in SSE mode (background) |
 | `make mcp-stop` | Stop all MCP servers |
+| `make kb-reindex` | Build KB index from markdown files |
 
 The three MCP servers and their default ports:
 
@@ -98,12 +95,17 @@ The three MCP servers and their default ports:
 | Alertmanager | 8000 | Alerts, silences, receivers |
 | Grafana | 8001 | Dashboards, datasources, Prometheus queries, Loki logs |
 | Genesys Cloud | 8002 | Queue volumes, conversations, OAuth clients |
+| KB | 8003 | KB search and section retrieval |
 
 Servers that fail to connect at startup are skipped -- the assistant still works without them.
 
 If you want the assistant to spawn MCP servers via stdio (recommended for single-host installs),
 use the stdio example config in `deploy/config.stdio.example.yaml` and ensure the assistant
 service user can execute the MCP binaries. stdio servers inherit the assistant's environment.
+
+The assistant can also load domain knowledge from a local KB folder (default: `KB/`).
+For Genesys Cloud-focused deployments, keep your runbooks/metric references in that folder.
+Run `make kb-reindex` after updating KB content to refresh the index (optional but faster).
 
 ## Deployment
 
@@ -144,6 +146,7 @@ Browser (localhost:5173)
                     +-- Alertmanager MCP (SSE :8000 or stdio)
                     +-- Grafana MCP (SSE :8001 or stdio)
                     +-- Genesys Cloud MCP (SSE :8002 or stdio)
+                    +-- KB MCP (SSE :8003 or stdio)
 ```
 
 The chat agent loop:
@@ -178,6 +181,7 @@ mcp_servers/
   alertmanager-mcp-go/  AlertManager MCP server
   mcp-grafana/          Grafana MCP server
   genesys-cloud-mcp-go/ Genesys Cloud MCP server
+KB/                     Domain knowledge base (markdown sections)
 ```
 
 ## Tests
