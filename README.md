@@ -101,6 +101,10 @@ The three MCP servers and their default ports:
 
 Servers that fail to connect at startup are skipped -- the assistant still works without them.
 
+If you want the assistant to spawn MCP servers via stdio (recommended for single-host installs),
+use the stdio example config in `deploy/config.stdio.example.yaml` and ensure the assistant
+service user can execute the MCP binaries. stdio servers inherit the assistant's environment.
+
 ## Deployment
 
 For production packaging, run:
@@ -136,10 +140,10 @@ Browser (localhost:5173)
               +-- /api/chat      --> SSE streaming chat (agent loop)
               +-- /api/dashboard-context/{uid}
               |
-              +-- MCP clients (SSE transport)
-                    +-- Alertmanager MCP (:8000)
-                    +-- Grafana MCP (:8001)
-                    +-- Genesys Cloud MCP (:8002)
+              +-- MCP clients (SSE or stdio)
+                    +-- Alertmanager MCP (SSE :8000 or stdio)
+                    +-- Grafana MCP (SSE :8001 or stdio)
+                    +-- Genesys Cloud MCP (SSE :8002 or stdio)
 ```
 
 The chat agent loop:
@@ -162,7 +166,7 @@ internal/
   context/              Dashboard URL parser + enricher with TTL cache
   grafana/              Grafana API client (dashboards, users)
   llm/                  OpenAI streaming client
-  mcp/                  MCP client (SSE transport protocol)
+  mcp/                  MCP clients (SSE and stdio transports)
   proxy/                Grafana reverse proxy (header stripping, cookie passthrough)
   storage/              SQLite storage for chat history
 frontend/               React + TypeScript + Vite

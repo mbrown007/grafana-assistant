@@ -1,0 +1,20 @@
+# Example config for running MCP servers via stdio (spawned by the assistant).
+
+listen_addr: ":8080"
+grafana_url: "http://localhost:3000"
+db_path: "/var/lib/monitoring-assistant/assistant.db"
+openai_model: "gpt-4o"
+
+mcp_servers:
+  - type: "alertmanager"
+    transport: "stdio"
+    command: "/usr/local/bin/alertmanager-mcp-server"
+    args: ["-transport", "stdio"]
+  - type: "grafana"
+    transport: "stdio"
+    command: "/usr/local/bin/mcp-grafana"
+    args: ["-t", "stdio"]
+  - type: "genesyscloud"
+    transport: "stdio"
+    command: "/usr/local/bin/genesys-cloud-mcp-server"
+    args: ["-transport", "stdio"]

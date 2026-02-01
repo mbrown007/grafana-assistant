@@ -1,0 +1,8 @@
+[Service]
+# Optional extra env files for secrets/vars
+EnvironmentFile=-/etc/monitoring-assistant/assistant.env
+EnvironmentFile=-/etc/monitoring-assistant/assistant.secrets
+
+# If you want to force a specific config path
+# ExecStart=
+# ExecStart=/opt/monitoring-assistant/assistant -config /etc/monitoring-assistant/config.yaml

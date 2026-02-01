@@ -18,17 +18,10 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/requestid"
 )
 
-// Tool represents an MCP tool definition.
-type Tool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-}
-
-// Client is an MCP client that communicates via the SSE transport protocol.
+// SSEClient is an MCP client that communicates via the SSE transport protocol.
 // It maintains a persistent SSE connection for receiving responses and sends
 // JSON-RPC requests via POST to the message endpoint.
-type Client struct {
+type SSEClient struct {
 	baseURL    string
 	serverType string
 	httpClient *http.Client
@@ -43,9 +36,9 @@ type Client struct {
 	nextID      atomic.Int64
 }
 
-// NewClient creates a new MCP client for the given server URL and type.
-func NewClient(url string, serverType string) *Client {
-	c := &Client{
+// NewSSEClient creates a new MCP client for the given server URL and type.
+func NewSSEClient(url string, serverType string) *SSEClient {
+	c := &SSEClient{
 		baseURL:    strings.TrimRight(url, "/"),
 		serverType: serverType,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
@@ -57,7 +50,7 @@ func NewClient(url string, serverType string) *Client {
 
 // Connect establishes the SSE connection and discovers available tools.
 // This must be called before any tool operations.
-func (c *Client) Connect(ctx context.Context) error {
+func (c *SSEClient) Connect(ctx context.Context) error {
 	if err := c.connectSSE(ctx); err != nil {
 		return fmt.Errorf("sse connect: %w", err)
 	}
@@ -68,7 +61,7 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 // Health checks if the MCP server is reachable.
-func (c *Client) Health(ctx context.Context) error {
+func (c *SSEClient) Health(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
 	if err != nil {
 		return err
@@ -86,7 +79,7 @@ func (c *Client) Health(ctx context.Context) error {
 
 // connectSSE establishes a persistent SSE connection to the /sse endpoint
 // and reads the message endpoint URL from the initial "endpoint" event.
-func (c *Client) connectSSE(ctx context.Context) error {
+func (c *SSEClient) connectSSE(ctx context.Context) error {
 	sseURL := c.baseURL + "/sse"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sseURL, nil)
 	if err != nil {
@@ -137,7 +130,7 @@ func (c *Client) connectSSE(ctx context.Context) error {
 
 // readSSEStream reads the SSE event stream. It sends the message endpoint URL
 // on endpointCh (once) and dispatches JSON-RPC responses to waiting callers.
-func (c *Client) readSSEStream(body io.ReadCloser, endpointCh chan<- string) {
+func (c *SSEClient) readSSEStream(body io.ReadCloser, endpointCh chan<- string) {
 	defer body.Close()
 
 	scanner := bufio.NewScanner(body)
@@ -183,7 +176,7 @@ func (c *Client) readSSEStream(body io.ReadCloser, endpointCh chan<- string) {
 
 // dispatchResponse routes a JSON-RPC response from the SSE stream to the
 // caller waiting on that request ID.
-func (c *Client) dispatchResponse(data string) {
+func (c *SSEClient) dispatchResponse(data string) {
 	var envelope struct {
 		ID     json.RawMessage `json:"id"`
 		Result json.RawMessage `json:"result"`
@@ -215,7 +208,7 @@ func (c *Client) dispatchResponse(data string) {
 
 // jsonRPC sends a JSON-RPC request via POST to the message endpoint and waits
 // for the response on the SSE stream.
-func (c *Client) jsonRPC(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (c *SSEClient) jsonRPC(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	c.mu.Lock()
 	messageURL := c.messageURL
 	c.mu.Unlock()
@@ -286,7 +279,7 @@ func (c *Client) jsonRPC(ctx context.Context, method string, params any) (json.R
 
 // DiscoverTools fetches available tools from the MCP server.
 // Results are cached after the first successful call.
-func (c *Client) DiscoverTools(ctx context.Context) ([]Tool, error) {
+func (c *SSEClient) DiscoverTools(ctx context.Context) ([]Tool, error) {
 	if len(c.tools) > 0 {
 		return c.tools, nil
 	}
@@ -322,7 +315,7 @@ func (c *Client) DiscoverTools(ctx context.Context) ([]Tool, error) {
 }
 
 // InvokeTool calls an MCP tool with the given arguments.
-func (c *Client) InvokeTool(ctx context.Context, name string, args map[string]any) (any, error) {
+func (c *SSEClient) InvokeTool(ctx context.Context, name string, args map[string]any) (any, error) {
 	// Strip the server prefix for the actual call.
 	actualName := strings.TrimPrefix(name, c.serverType+"__")
 
@@ -374,4 +367,11 @@ func (c *Client) InvokeTool(ctx context.Context, name string, args map[string]an
 	}
 
 	return nil, fmt.Errorf("tool %s returned no content", name)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

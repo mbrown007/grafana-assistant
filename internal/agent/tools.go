@@ -32,7 +32,7 @@ func MCPToolsToOpenAI(mcpTools []mcp.Tool) []openai.Tool {
 
 // RouteToolCall routes a tool call to the correct MCP client based on the name prefix.
 // Tool names are formatted as "servertype__toolname" (e.g., "alertmanager__list_alerts").
-func RouteToolCall(ctx context.Context, name string, args map[string]any, clients []*mcp.Client) (any, error) {
+func RouteToolCall(ctx context.Context, name string, args map[string]any, clients []mcp.Client) (any, error) {
 	for _, c := range clients {
 		tools, _ := c.DiscoverTools(ctx)
 		for _, t := range tools {
@@ -43,4 +43,3 @@ func RouteToolCall(ctx context.Context, name string, args map[string]any, client
 	}
 	return nil, fmt.Errorf("no MCP server handles tool %q", name)
 }
-

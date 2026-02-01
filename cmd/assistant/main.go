@@ -168,15 +168,42 @@ func main() {
 		slog.Warn("LLM client not configured, chat will be unavailable", "error", err)
 	}
 
-	// Initialize MCP clients: connect via SSE and discover tools.
-	var mcpClients []*mcp.Client
+	// Initialize MCP clients (SSE or stdio) and discover tools.
+	var mcpClients []mcp.Client
 	for _, srv := range cfg.MCPServers {
-		c := mcp.NewClient(srv.URL, srv.Type)
-		if err := c.Connect(context.Background()); err != nil {
-			slog.Warn("failed to connect to MCP server (will skip)", "type", srv.Type, "url", srv.URL, "error", err)
-			continue
+		transport := strings.ToLower(strings.TrimSpace(srv.Transport))
+		if transport == "" {
+			transport = "sse"
 		}
-		mcpClients = append(mcpClients, c)
+
+		switch transport {
+		case "sse":
+			c := mcp.NewSSEClient(srv.URL, srv.Type)
+			if err := c.Connect(context.Background()); err != nil {
+				slog.Warn("failed to connect to MCP server (will skip)", "type", srv.Type, "url", srv.URL, "error", err)
+				continue
+			}
+			mcpClients = append(mcpClients, c)
+		case "stdio":
+			c, err := mcp.NewStdioClient(mcp.StdioConfig{
+				Command:    srv.Command,
+				Args:       srv.Args,
+				Env:        srv.Env,
+				WorkDir:    srv.WorkDir,
+				ServerType: srv.Type,
+			})
+			if err != nil {
+				slog.Warn("failed to start stdio MCP server (will skip)", "type", srv.Type, "command", srv.Command, "error", err)
+				continue
+			}
+			if err := c.Connect(context.Background()); err != nil {
+				slog.Warn("failed to connect to stdio MCP server (will skip)", "type", srv.Type, "command", srv.Command, "error", err)
+				continue
+			}
+			mcpClients = append(mcpClients, c)
+		default:
+			slog.Warn("unknown MCP transport (will skip)", "type", srv.Type, "transport", srv.Transport)
+		}
 	}
 
 	// Create agent manager.

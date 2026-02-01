@@ -24,14 +24,14 @@ const maxToolIterations = 5
 // Manager orchestrates the LLM agent loop with tool calling and memory.
 type Manager struct {
 	llm      *llm.Client
-	mcp      []*mcp.Client
+	mcp      []mcp.Client
 	enricher *appcontext.Enricher
 	store    storage.Store
 	tools    []mcp.Tool
 }
 
 // NewManager creates an agent manager.
-func NewManager(llmClient *llm.Client, mcpClients []*mcp.Client, enricher *appcontext.Enricher, store storage.Store) *Manager {
+func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcontext.Enricher, store storage.Store) *Manager {
 	return &Manager{
 		llm:      llmClient,
 		mcp:      mcpClients,

@@ -40,13 +40,24 @@ metrics_enabled: true
 # rate_limit_per_minute: 20                 # Chat requests per user per minute
 # rate_limit_burst: 5                       # Burst allowance
 
-# MCP servers for tool integration (SSE transport).
-# Each server must be running in SSE mode before the assistant starts.
-# Start them with: make mcp-start
+# MCP servers for tool integration (SSE or stdio transport).
+# For SSE, each server must be running before the assistant starts.
 mcp_servers:
-  - url: "http://localhost:8000"
-    type: "alertmanager"
-  - url: "http://localhost:8001"
-    type: "grafana"
-  - url: "http://localhost:8002"
-    type: "genesyscloud"
+  - type: "alertmanager"
+    transport: "sse"
+    url: "http://localhost:8000"
+  - type: "grafana"
+    transport: "sse"
+    url: "http://localhost:8001"
+  - type: "genesyscloud"
+    transport: "sse"
+    url: "http://localhost:8002"
+
+# Example stdio server (launched by the assistant):
+# mcp_servers:
+#   - type: "alertmanager"
+#     transport: "stdio"
+#     command: "/usr/local/bin/alertmanager-mcp-server"
+#     args: ["-transport", "stdio"]
+#     env:
+#       ALERTMANAGER_URL: "http://localhost:9093"

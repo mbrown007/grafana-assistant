@@ -22,7 +22,7 @@ sudo chown -R monitoring-assistant:monitoring-assistant /opt/monitoring-assistan
 make package
 sudo install -m 0755 bin/assistant /opt/monitoring-assistant/assistant
 sudo install -m 0640 config.example.yaml /etc/monitoring-assistant/config.yaml
-sudo touch /etc/monitoring-assistant/assistant.env
+sudo install -m 0640 deploy/assistant.env.example /etc/monitoring-assistant/assistant.env
 sudo chmod 600 /etc/monitoring-assistant/assistant.env
 
 sudo install -m 0644 deploy/monitoring-assistant.service /etc/systemd/system/
@@ -57,11 +57,16 @@ Use the unit file in `deploy/monitoring-assistant.service` as a template.
 
 ```bash
 sudo cp deploy/monitoring-assistant.service /etc/systemd/system/
+sudo mkdir -p /etc/systemd/system/monitoring-assistant.service.d
+sudo install -m 0644 deploy/monitoring-assistant.service.d/override.conf.example /etc/systemd/system/monitoring-assistant.service.d/override.conf
 sudo systemctl daemon-reload
 sudo systemctl enable --now monitoring-assistant
 ```
 
 Adjust `User`, `Group`, `WorkingDirectory`, and paths in `ExecStart` as needed.
+If you use MCP stdio mode, the MCP processes inherit the assistant's environment,
+so put MCP secrets/vars in `/etc/monitoring-assistant/assistant.env` or a
+drop-in `assistant.secrets` file referenced by the override.
 
 ## Grafana configuration
 

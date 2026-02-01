@@ -14,8 +14,13 @@ import (
 
 // MCPServer describes a single MCP server endpoint.
 type MCPServer struct {
-	URL  string `yaml:"url"`
-	Type string `yaml:"type"` // e.g. "alertmanager", "grafana"
+	URL       string            `yaml:"url"`
+	Type      string            `yaml:"type"`      // e.g. "alertmanager", "grafana"
+	Transport string            `yaml:"transport"` // "sse" or "stdio"
+	Command   string            `yaml:"command"`
+	Args      []string          `yaml:"args"`
+	Env       map[string]string `yaml:"env"`
+	WorkDir   string            `yaml:"work_dir"`
 }
 
 type Config struct {
@@ -38,11 +43,11 @@ type Config struct {
 	MetricsEnabled bool `yaml:"metrics_enabled"`
 
 	// Security settings.
-	AllowedOrigin     string `yaml:"allowed_origin"`
-	MaxMessageLength  int    `yaml:"max_message_length"`
-	MaxBodySize       int64  `yaml:"max_body_size"`
-	RateLimitPerMin   int    `yaml:"rate_limit_per_minute"`
-	RateLimitBurst    int    `yaml:"rate_limit_burst"`
+	AllowedOrigin    string `yaml:"allowed_origin"`
+	MaxMessageLength int    `yaml:"max_message_length"`
+	MaxBodySize      int64  `yaml:"max_body_size"`
+	RateLimitPerMin  int    `yaml:"rate_limit_per_minute"`
+	RateLimitBurst   int    `yaml:"rate_limit_burst"`
 }
 
 // loadDotEnv reads a .env file and sets any variables not already present
