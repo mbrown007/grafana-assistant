@@ -20,6 +20,7 @@ type Session struct {
 	UserID    int64     `json:"user_id"`
 	OrgID     int64     `json:"org_id"`
 	DashboardUID string `json:"dashboard_uid,omitempty"`
+	ScratchpadUID string `json:"scratchpad_uid,omitempty"`
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -55,6 +56,7 @@ type Store interface {
 	GetSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context, userID, orgID int64, dashboardUID string) ([]Session, error)
 	UpdateSessionMeta(ctx context.Context, id, title, dashboardUID string, updatedAt time.Time) error
+	UpdateSessionScratchpad(ctx context.Context, id, scratchpadUID string, updatedAt time.Time) error
 	DeleteSession(ctx context.Context, id string) error
 
 	// Messages

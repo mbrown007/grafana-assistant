@@ -8,6 +8,7 @@ import { Artifact, parseArtifacts } from './Artifact';
 interface ChatPanelProps {
   dashboardContext?: DashboardContext;
   onHide?: () => void;
+  onNavigate?: (url: string) => void;
 }
 
 const SUGGESTIONS = [
@@ -16,7 +17,7 @@ const SUGGESTIONS = [
   'Which panels look risky right now?'
 ];
 
-export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
+export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +31,7 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const lastNavigateRef = useRef<string>('');
 
   const contextLabel = useMemo(() => {
     if (!dashboardContext) {
@@ -202,6 +204,14 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
             setMessages((prev) =>
               prev.map((msg) => (msg.id === assistantId ? { ...msg, toolCalls: [...toolCalls] } : msg))
             );
+
+            if (chunk.tool === 'scratchpad__upsert_panel' && chunk.result && onNavigate) {
+              const result = chunk.result as { url?: string };
+              if (result.url && result.url !== lastNavigateRef.current) {
+                lastNavigateRef.current = result.url;
+                onNavigate(result.url);
+              }
+            }
           }
 
           if (chunk.type === 'complete' && chunk.message && accumulated.trim().length === 0) {
@@ -239,7 +249,7 @@ export function ChatPanel({ dashboardContext, onHide }: ChatPanelProps) {
         setIsLoading(false);
       }
     },
-    [appendMessage, dashboardContext, isLoading, sessionId]
+    [appendMessage, dashboardContext, isLoading, sessionId, currentUser]
   );
 
   const handleSubmit = (event: React.FormEvent) => {

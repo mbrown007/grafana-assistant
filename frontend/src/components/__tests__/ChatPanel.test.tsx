@@ -5,12 +5,12 @@ import { ChatPanel } from '../ChatPanel';
 // Mock the API module.
 vi.mock('../../services/api', () => ({
   chatApi: {
-    async *stream() {
+    stream: vi.fn(async function* () {
       yield { type: 'start', session_id: 'test-session' };
       yield { type: 'token', message: 'Hello from AI' };
       yield { type: 'complete', message: 'Hello from AI' };
       yield { type: 'done' };
-    },
+    }),
   },
   historyApi: {
     list: vi.fn().mockResolvedValue([]),
@@ -91,5 +91,40 @@ describe('ChatPanel', () => {
     await waitFor(() => {
       expect(screen.getByText(/No dashboard context yet/)).toBeInTheDocument();
     });
+  });
+
+  it('navigates when scratchpad tool returns a URL', async () => {
+    const { chatApi } = await import('../../services/api');
+    vi.mocked(chatApi.stream).mockImplementationOnce(async function* () {
+      yield {
+        type: 'tool',
+        tool: 'scratchpad__upsert_panel',
+        tool_id: 'tool-1',
+        result: { url: '/grafana/d/dash-1' },
+      };
+      yield { type: 'complete', message: 'Done' };
+      yield { type: 'done' };
+    });
+
+    const onNavigate = vi.fn();
+    const { container } = render(<ChatPanel onNavigate={onNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('Ask about this dashboard...');
+    await userEvent.type(input, 'show me cpu');
+    const submit = container.querySelector('form.chat-input button[type="submit"]');
+    expect(submit).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(submit as HTMLButtonElement);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(chatApi.stream)).toHaveBeenCalled();
+      expect(onNavigate).toHaveBeenCalledWith('/grafana/d/dash-1');
+    });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 });

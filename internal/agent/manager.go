@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -13,30 +14,52 @@ import (
 
 	"github.com/marcusz/monitoring-assistant/internal/api"
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
+	"github.com/marcusz/monitoring-assistant/internal/dashboard"
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
 	"github.com/marcusz/monitoring-assistant/internal/llm"
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/marcusz/monitoring-assistant/pkg/kb"
 )
 
 const maxToolIterations = 5
 
 // Manager orchestrates the LLM agent loop with tool calling and memory.
 type Manager struct {
-	llm      *llm.Client
-	mcp      []mcp.Client
-	enricher *appcontext.Enricher
-	store    storage.Store
-	tools    []mcp.Tool
+	llm               *llm.Client
+	mcp               []mcp.Client
+	enricher          *appcontext.Enricher
+	store             storage.Store
+	scratchpads       *dashboard.Manager
+	tools             []mcp.Tool
+	kbPath            string
+	kbMaxSections     int
+	kbMaxSectionChars int
+	kbOnce            sync.Once
+	kbIndex           *kb.Index
+	kbErr             error
 }
 
 // NewManager creates an agent manager.
-func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcontext.Enricher, store storage.Store) *Manager {
+func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcontext.Enricher, store storage.Store, scratchpads *dashboard.Manager, kbPath string, kbMaxSections, kbMaxSectionChars int) *Manager {
+	if kbPath == "" {
+		kbPath = "KB"
+	}
+	if kbMaxSections <= 0 {
+		kbMaxSections = 2
+	}
+	if kbMaxSectionChars <= 0 {
+		kbMaxSectionChars = 2000
+	}
 	return &Manager{
-		llm:      llmClient,
-		mcp:      mcpClients,
-		enricher: enricher,
-		store:    store,
+		llm:               llmClient,
+		mcp:               mcpClients,
+		enricher:          enricher,
+		store:             store,
+		scratchpads:       scratchpads,
+		kbPath:            kbPath,
+		kbMaxSections:     kbMaxSections,
+		kbMaxSectionChars: kbMaxSectionChars,
 	}
 }
 
@@ -143,6 +166,10 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 
 	// 4. Add user message (sanitize control characters).
 	cleanMessage := sanitizeInput(req.Message)
+	kbContext := m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext)
+	if kbContext != "" {
+		cleanMessage = cleanMessage + "\n\n[KB Context]\n" + kbContext
+	}
 	mem.Add(openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
 		Content: cleanMessage,
@@ -171,7 +198,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 5. Prepare OpenAI tools.
-	openaiTools := MCPToolsToOpenAI(m.tools)
+	openaiTools := append(MCPToolsToOpenAI(m.tools), InternalTools()...)
 
 	// 6. Agent loop (tool calling iterations).
 	var finalContent string
@@ -237,7 +264,10 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			})
 
 			// Execute tool.
-			result, err := RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
+			result, err := m.handleInternalTool(ctx, tc.Function.Name, args, user, sess)
+			if err == nil && result == nil {
+				result, err = RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
+			}
 			if err != nil {
 				slog.WarnContext(ctx, "tool call failed", "tool", tc.Function.Name, "error", err)
 				result = fmt.Sprintf("Error: %v", err)
@@ -369,4 +399,68 @@ func marshalAuditValue(value any) string {
 		}
 		return string(data)
 	}
+}
+
+func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[string]any, user *grafana.User, sess *storage.Session) (any, error) {
+	if name != "scratchpad__upsert_panel" {
+		return nil, nil
+	}
+	if m.scratchpads == nil {
+		return nil, fmt.Errorf("scratchpad manager not configured")
+	}
+	if user == nil || sess == nil {
+		return nil, fmt.Errorf("missing user/session context for scratchpad")
+	}
+
+	query, _ := args["query"].(string)
+	title, _ := args["title"].(string)
+	description, _ := args["description"].(string)
+	panelType, _ := args["panelType"].(string)
+	if query == "" || title == "" {
+		return nil, fmt.Errorf("query and title are required")
+	}
+
+	var datasource map[string]any
+	if raw, ok := args["datasource"].(map[string]any); ok {
+		datasource = raw
+	}
+
+	var timeRange map[string]string
+	if raw, ok := args["timeRange"].(map[string]any); ok {
+		timeRange = make(map[string]string)
+		for k, v := range raw {
+			if s, ok := v.(string); ok {
+				timeRange[k] = s
+			}
+		}
+	}
+
+	uid := sess.ScratchpadUID
+	panelID := 1
+	url := ""
+	if uid == "" {
+		var err error
+		uid, panelID, url, err = m.scratchpads.GetOrCreateScratchpad(ctx, user, sess.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.store.UpdateSessionScratchpad(ctx, sess.ID, uid, time.Now()); err != nil {
+			slog.WarnContext(ctx, "failed to persist scratchpad uid", "error", err)
+		} else {
+			sess.ScratchpadUID = uid
+		}
+	}
+
+	if err := m.scratchpads.UpdatePanel(ctx, uid, panelID, query, title, description, panelType, datasource, timeRange); err != nil {
+		return nil, err
+	}
+	if url == "" {
+		url = "/grafana/d/" + uid
+	}
+
+	return map[string]any{
+		"dashboardUid": uid,
+		"panelId":      panelID,
+		"url":          url,
+	}, nil
 }

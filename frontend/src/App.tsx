@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatPanel } from './components/ChatPanel';
 import type { DashboardContext } from './types';
 import { parseDashboardUrl } from './utils/dashboard';
@@ -19,6 +19,19 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dashboardContext, setDashboardContext] = useState<DashboardContext | undefined>();
   const lastUrlRef = useRef<string>('');
+
+  const handleNavigate = useCallback((url: string) => {
+    const iframe = iframeRef.current;
+    if (!iframe || !url) {
+      return;
+    }
+    const nextUrl = url.startsWith('/grafana/') ? url : `/grafana/${url.replace(/^\\/+/, '')}`;
+    const resolved = new URL(nextUrl, window.location.href).href;
+    if (iframe.src === resolved) {
+      return;
+    }
+    iframe.src = nextUrl;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,7 +114,11 @@ export function App() {
           )}
         </section>
         <aside className={`chat-pane ${sidebarOpen ? 'open' : 'closed'}`}>
-          <ChatPanel dashboardContext={dashboardContext} onHide={() => setSidebarOpen(false)} />
+          <ChatPanel
+            dashboardContext={dashboardContext}
+            onHide={() => setSidebarOpen(false)}
+            onNavigate={handleNavigate}
+          />
         </aside>
       </main>
     </div>

@@ -30,6 +30,31 @@ func MCPToolsToOpenAI(mcpTools []mcp.Tool) []openai.Tool {
 	return tools
 }
 
+// InternalTools returns OpenAI tool definitions handled by the agent itself.
+func InternalTools() []openai.Tool {
+	return []openai.Tool{
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "scratchpad__upsert_panel",
+				Description: "Create or update the user's per-session scratchpad Grafana panel for complex visualizations.",
+				Parameters: json.RawMessage(`{
+					"type": "object",
+					"properties": {
+						"query": {"type": "string", "description": "PromQL/SQL query for the panel"},
+						"title": {"type": "string", "description": "Panel title"},
+						"description": {"type": "string", "description": "Panel description"},
+						"panelType": {"type": "string", "description": "Optional Grafana panel type hint", "enum": ["timeseries", "stat", "table"]},
+						"datasource": {"type": "object", "description": "Optional Grafana datasource object (uid/type)"},
+						"timeRange": {"type": "object", "description": "Optional time range override", "additionalProperties": {"type": "string"}}
+					},
+					"required": ["query", "title"]
+				}`),
+			},
+		},
+	}
+}
+
 // RouteToolCall routes a tool call to the correct MCP client based on the name prefix.
 // Tool names are formatted as "servertype__toolname" (e.g., "alertmanager__list_alerts").
 func RouteToolCall(ctx context.Context, name string, args map[string]any, clients []mcp.Client) (any, error) {

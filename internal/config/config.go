@@ -28,6 +28,8 @@ type Config struct {
 	GrafanaURL        string `yaml:"grafana_url"`
 	GrafanaToken      string `yaml:"grafana_token"`
 	DataRetentionDays int    `yaml:"data_retention_days"`
+	ScratchpadTTLDays int    `yaml:"scratchpad_ttl_days"`
+	ScratchpadFolder  string `yaml:"scratchpad_folder"`
 
 	// Database path for SQLite (default: data/assistant.db).
 	DBPath string `yaml:"db_path"`
@@ -38,6 +40,12 @@ type Config struct {
 
 	// MCP servers.
 	MCPServers []MCPServer `yaml:"mcp_servers"`
+
+	// Knowledge base (KB) path for domain context.
+	KBPath string `yaml:"kb_path"`
+	// KB context limits.
+	KBMaxSections     int `yaml:"kb_max_sections"`
+	KBMaxSectionChars int `yaml:"kb_max_section_chars"`
 
 	// Metrics.
 	MetricsEnabled bool `yaml:"metrics_enabled"`
@@ -89,6 +97,11 @@ func Load(path string) (*Config, error) {
 		DataRetentionDays: 30,
 		DBPath:            "data/assistant.db",
 		OpenAIModel:       "gpt-4o",
+		KBPath:            "KB",
+		KBMaxSections:     2,
+		KBMaxSectionChars: 2000,
+		ScratchpadTTLDays: 7,
+		ScratchpadFolder:  "Assistant Scratchpads",
 		MetricsEnabled:    true,
 		MaxMessageLength:  16000,
 		MaxBodySize:       65536,
@@ -123,6 +136,16 @@ func Load(path string) (*Config, error) {
 		}
 		cfg.DataRetentionDays = days
 	}
+	if v := os.Getenv("ASSISTANT_SCRATCHPAD_TTL_DAYS"); v != "" {
+		days, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ASSISTANT_SCRATCHPAD_TTL_DAYS: %w", err)
+		}
+		cfg.ScratchpadTTLDays = days
+	}
+	if v := os.Getenv("ASSISTANT_SCRATCHPAD_FOLDER"); v != "" {
+		cfg.ScratchpadFolder = v
+	}
 	if v := os.Getenv("ASSISTANT_DB_PATH"); v != "" {
 		cfg.DBPath = v
 	}
@@ -131,6 +154,23 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("ASSISTANT_OPENAI_MODEL"); v != "" {
 		cfg.OpenAIModel = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_PATH"); v != "" {
+		cfg.KBPath = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_MAX_SECTIONS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ASSISTANT_KB_MAX_SECTIONS: %w", err)
+		}
+		cfg.KBMaxSections = n
+	}
+	if v := os.Getenv("ASSISTANT_KB_MAX_SECTION_CHARS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ASSISTANT_KB_MAX_SECTION_CHARS: %w", err)
+		}
+		cfg.KBMaxSectionChars = n
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -152,6 +192,15 @@ func (c *Config) Validate() error {
 	}
 	if c.DataRetentionDays < 1 {
 		return errors.New("data_retention_days must be >= 1")
+	}
+	if c.KBMaxSections < 1 {
+		return errors.New("kb_max_sections must be >= 1")
+	}
+	if c.KBMaxSectionChars < 256 {
+		return errors.New("kb_max_section_chars must be >= 256")
+	}
+	if c.ScratchpadTTLDays < 0 {
+		return errors.New("scratchpad_ttl_days must be >= 0")
 	}
 	return nil
 }

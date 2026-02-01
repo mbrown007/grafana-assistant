@@ -1,0 +1,34 @@
+{
+  "title": "Scratchpad",
+  "schemaVersion": 38,
+  "timezone": "browser",
+  "tags": [],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Scratchpad",
+      "datasource": {
+        "type": "prometheus",
+        "uid": ""
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": ""
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 9
+      }
+    }
+  ]
+}

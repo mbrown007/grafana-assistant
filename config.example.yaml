@@ -20,6 +20,8 @@ grafana_url: "http://localhost:3000"
 
 # Number of days to retain chat history (default: 30)
 data_retention_days: 30
+scratchpad_ttl_days: 7
+scratchpad_folder: "Assistant Scratchpads"
 
 # SQLite database path (default: data/assistant.db)
 db_path: "data/assistant.db"
@@ -29,6 +31,11 @@ db_path: "data/assistant.db"
 
 # OpenAI model (default: gpt-4o)
 openai_model: "gpt-4o"
+
+# Knowledge base folder (default: "KB")
+# kb_path: "KB"
+# kb_max_sections: 2          # Max KB sections to inject per request
+# kb_max_section_chars: 2000  # Max chars per KB section
 
 # Prometheus metrics (default: true)
 metrics_enabled: true
@@ -52,6 +59,10 @@ mcp_servers:
   - type: "genesyscloud"
     transport: "sse"
     url: "http://localhost:8002"
+# Optional KB MCP (search KB via tools instead of direct context injection)
+# - type: "kb"
+#   transport: "sse"
+#   url: "http://localhost:8003"
 
 # Example stdio server (launched by the assistant):
 # mcp_servers:

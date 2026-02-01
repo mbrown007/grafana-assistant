@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"flag"
 	"io/fs"
@@ -11,15 +10,18 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/marcusz/monitoring-assistant/frontend"
 	"github.com/marcusz/monitoring-assistant/internal/agent"
 	"github.com/marcusz/monitoring-assistant/internal/api"
 	"github.com/marcusz/monitoring-assistant/internal/auth"
 	"github.com/marcusz/monitoring-assistant/internal/config"
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
+	"github.com/marcusz/monitoring-assistant/internal/dashboard"
 	"github.com/marcusz/monitoring-assistant/internal/grafana"
 	"github.com/marcusz/monitoring-assistant/internal/llm"
 	"github.com/marcusz/monitoring-assistant/internal/logging"
@@ -30,11 +32,8 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
 
-//go:embed static/*
-var staticFiles embed.FS
-
 func spaHandler() (http.Handler, error) {
-	sub, err := fs.Sub(staticFiles, "static")
+	sub, err := fs.Sub(frontend.DistFS, "dist")
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +110,71 @@ func startRetentionPurger(ctx context.Context, store storage.Store, days int) {
 	}()
 }
 
+func startScratchpadPurger(ctx context.Context, client *grafana.Client, ttlDays int) {
+	if ttlDays <= 0 {
+		return
+	}
+
+	purge := func() {
+		cutoff := time.Now().AddDate(0, 0, -ttlDays)
+		purgeCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+
+		hits, err := client.SearchDashboards(purgeCtx, []string{dashboard.ScratchpadTag})
+		if err != nil {
+			slog.Warn("scratchpad purge failed to list dashboards", "error", err)
+			return
+		}
+
+		var deleted int
+		for _, hit := range hits {
+			lastUsed, ok := extractLastUsed(hit.Tags)
+			if !ok {
+				continue
+			}
+			if lastUsed.Before(cutoff) && hit.UID != "" {
+				if err := client.DeleteDashboard(purgeCtx, hit.UID); err != nil {
+					slog.Warn("scratchpad purge failed to delete dashboard", "uid", hit.UID, "error", err)
+					continue
+				}
+				deleted++
+			}
+		}
+		if deleted > 0 {
+			slog.Info("scratchpad purge completed", "deleted_dashboards", deleted, "cutoff", cutoff.Format(time.RFC3339))
+		}
+	}
+
+	purge()
+
+	ticker := time.NewTicker(24 * time.Hour)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				purge()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func extractLastUsed(tags []string) (time.Time, bool) {
+	for _, tag := range tags {
+		if strings.HasPrefix(tag, dashboard.LastUsedTagPrefix) {
+			raw := strings.TrimPrefix(tag, dashboard.LastUsedTagPrefix)
+			sec, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return time.Time{}, false
+			}
+			return time.Unix(sec, 0), true
+		}
+	}
+	return time.Time{}, false
+}
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
@@ -158,6 +222,7 @@ func main() {
 	// Initialize Grafana client and session resolver.
 	grafanaClient := grafana.NewClient(cfg.GrafanaURL, cfg.GrafanaToken)
 	sessionResolver := auth.NewSessionResolver(grafanaClient)
+	startScratchpadPurger(ctx, grafanaClient, cfg.ScratchpadTTLDays)
 
 	// Initialize dashboard context enricher with 5-minute cache TTL.
 	enricher := appcontext.NewEnricher(grafanaClient, 5*time.Minute)
@@ -207,7 +272,8 @@ func main() {
 	}
 
 	// Create agent manager.
-	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store)
+	scratchpadMgr := dashboard.NewManager(grafanaClient, cfg.ScratchpadFolder)
+	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store, scratchpadMgr, cfg.KBPath, cfg.KBMaxSections, cfg.KBMaxSectionChars)
 	if len(mcpClients) > 0 {
 		if err := agentMgr.DiscoverTools(context.Background()); err != nil {
 			slog.Warn("failed to discover MCP tools", "error", err)

@@ -85,10 +85,14 @@ func (s *SQLite) migrate() error {
 	if err := s.ensureColumn("sessions", "dashboard_uid", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("sessions", "scratchpad_uid", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 
 	// Phase 3: create indexes that depend on migrated columns.
 	const indexes = `
 	CREATE INDEX IF NOT EXISTS idx_sessions_dashboard ON sessions(user_id, org_id, dashboard_uid);
+	CREATE INDEX IF NOT EXISTS idx_sessions_scratchpad ON sessions(user_id, org_id, scratchpad_uid);
 	`
 	if _, err := s.db.Exec(indexes); err != nil {
 		return err
@@ -131,9 +135,9 @@ func (s *SQLite) ensureColumn(table, column, decl string) error {
 // CreateSession inserts a new session.
 func (s *SQLite) CreateSession(ctx context.Context, sess *Session) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (id, user_id, org_id, dashboard_uid, title, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		sess.ID, sess.UserID, sess.OrgID, sess.DashboardUID, sess.Title,
+		`INSERT INTO sessions (id, user_id, org_id, dashboard_uid, scratchpad_uid, title, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sess.ID, sess.UserID, sess.OrgID, sess.DashboardUID, sess.ScratchpadUID, sess.Title,
 		sess.CreatedAt.Format(time.RFC3339),
 		sess.UpdatedAt.Format(time.RFC3339),
 	)
@@ -143,11 +147,11 @@ func (s *SQLite) CreateSession(ctx context.Context, sess *Session) error {
 // GetSession retrieves a session by ID.
 func (s *SQLite) GetSession(ctx context.Context, id string) (*Session, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, org_id, dashboard_uid, title, created_at, updated_at FROM sessions WHERE id = ?`, id)
+		`SELECT id, user_id, org_id, dashboard_uid, scratchpad_uid, title, created_at, updated_at FROM sessions WHERE id = ?`, id)
 
 	sess := &Session{}
 	var createdAt, updatedAt string
-	if err := row.Scan(&sess.ID, &sess.UserID, &sess.OrgID, &sess.DashboardUID, &sess.Title, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&sess.ID, &sess.UserID, &sess.OrgID, &sess.DashboardUID, &sess.ScratchpadUID, &sess.Title, &createdAt, &updatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -160,7 +164,7 @@ func (s *SQLite) GetSession(ctx context.Context, id string) (*Session, error) {
 
 // ListSessions returns all sessions for a user/org, newest first.
 func (s *SQLite) ListSessions(ctx context.Context, userID, orgID int64, dashboardUID string) ([]Session, error) {
-	query := `SELECT id, user_id, org_id, dashboard_uid, title, created_at, updated_at
+	query := `SELECT id, user_id, org_id, dashboard_uid, scratchpad_uid, title, created_at, updated_at
 		 FROM sessions WHERE user_id = ? AND org_id = ?`
 	args := []any{userID, orgID}
 	if dashboardUID != "" {
@@ -179,7 +183,7 @@ func (s *SQLite) ListSessions(ctx context.Context, userID, orgID int64, dashboar
 	for rows.Next() {
 		var sess Session
 		var createdAt, updatedAt string
-		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.OrgID, &sess.DashboardUID, &sess.Title, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.OrgID, &sess.DashboardUID, &sess.ScratchpadUID, &sess.Title, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		sess.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -194,6 +198,15 @@ func (s *SQLite) UpdateSessionMeta(ctx context.Context, id, title, dashboardUID 
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET title = ?, dashboard_uid = ?, updated_at = ? WHERE id = ?`,
 		title, dashboardUID, updatedAt.Format(time.RFC3339), id,
+	)
+	return err
+}
+
+// UpdateSessionScratchpad updates scratchpad UID and updated_at for a session.
+func (s *SQLite) UpdateSessionScratchpad(ctx context.Context, id, scratchpadUID string, updatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET scratchpad_uid = ?, updated_at = ? WHERE id = ?`,
+		scratchpadUID, updatedAt.Format(time.RFC3339), id,
 	)
 	return err
 }
