@@ -16,7 +16,7 @@ interface DashboardSummaryResponse {
 
 export function App() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dashboardContext, setDashboardContext] = useState<DashboardContext | undefined>();
   const lastUrlRef = useRef<string>('');
 
@@ -25,7 +25,7 @@ export function App() {
     if (!iframe || !url) {
       return;
     }
-    const nextUrl = url.startsWith('/grafana/') ? url : `/grafana/${url.replace(/^\\/+/, '')}`;
+    const nextUrl = url.startsWith('/grafana/') ? url : `/grafana/${url.replace(/^\/+/, '')}`;
     const resolved = new URL(nextUrl, window.location.href).href;
     if (iframe.src === resolved) {
       return;
