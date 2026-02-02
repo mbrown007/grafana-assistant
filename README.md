@@ -1,6 +1,10 @@
 # Monitoring Assistant
 
 A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered chat sidebar. The assistant understands which dashboard you're viewing and can answer questions about panels, queries, and metrics. It connects to MCP tool servers to fetch live data from Alertmanager, Grafana APIs, and Genesys Cloud.
+<img width="1919" height="947" alt="image" src="https://github.com/user-attachments/assets/bfd16a18-0f8a-404e-b8a0-0b7a062662b6" />
+
+<img width="1919" height="947" alt="image" src="https://github.com/user-attachments/assets/20f07f85-96cb-4b6e-afe2-28383a4404c0" />
+
 
 ## Prerequisites
 
