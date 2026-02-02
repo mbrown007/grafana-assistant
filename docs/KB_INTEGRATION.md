@@ -5,6 +5,62 @@ The Monitoring Assistant can leverage a knowledge base of markdown files to prov
 1.  **Direct Context Injection:** The assistant can directly search a local KB folder and inject the most relevant sections into the LLM prompt.
 2.  **KB MCP Server:** The KB can be exposed as a set of tools via a dedicated MCP server. The LLM can then choose to call these tools to search the KB.
 
+## KB Data Types and Formats
+
+The assistant supports two KB data types:
+
+1.  **Structured KB articles (token search).**
+2.  **Vector KB sections (semantic search).**
+
+Both data types are authored as Markdown and are parsed the same way: files are split into sections at `##` and `###` headings. Each section becomes a searchable unit with a title (the heading text) and body (the content until the next heading).
+
+### 1) Structured KB articles (token search)
+
+**Purpose:** Fast keyword search and direct context injection.  
+**Default path:** `KB/runbooks` (config: `kb_structured_path`).  
+**Index file:** `KB/runbooks/.kb_index.json` (or `kb_path/.kb_index.json` if using legacy `kb_path`).
+
+**Format requirements:**
+
+- Markdown files (`.md`) only.
+- Use `##` / `###` headings to define sections.
+- Keep sections focused (1–3 screens of text); smaller sections rank better.
+- Include the most relevant terms in headings and first lines (improves scoring).
+
+**Example folder layout:**
+
+```
+KB/
+  runbooks/
+    redis_latency.md
+    api_error_spike.md
+```
+
+### 2) Vector KB sections (semantic search)
+
+**Purpose:** Meaning-based retrieval (useful when exact keywords do not match).  
+**Path:** `kb_vector_path` (empty = disabled).  
+**Vector DB:** `kb_vector_db_path` (default: `KB/.kb_vectors.db`).  
+**Embedding model:** `kb_embedding_model` (default: `text-embedding-3-small`).
+
+**Format requirements:**
+
+- Markdown files (`.md`) only.
+- Same sectioning rules as structured KB articles (`##` / `###` headings).
+- Content should be natural language; avoid large logs or tables in a single section.
+- Vector indexing requires an OpenAI API key (`ASSISTANT_OPENAI_API_KEY` or `OPENAI_API_KEY`).
+
+**Indexing:**
+
+Run `make kb-reindex` to build/update:
+
+- Token index: `KB/runbooks/.kb_index.json`
+- Vector index: `KB/.kb_vectors.db` (if `kb_vector_path` is set and API key is available)
+
+## Example KB Runbook
+
+See `KB/runbooks/example_service_latency.md` for a complete example.
+
 ## Direct Context Injection
 
 This is the simplest way to use the KB. When the `kb_path` is configured in `config.yaml`, the assistant will automatically search the KB on every chat request.

@@ -200,7 +200,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}\\nArgs: {{ .request }}\\nResult: {{ .response }}{{end}}\"",
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call|context_injection|system_prompt\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}\\nArgs: {{ .request }}\\nResult: {{ .response }}{{else if eq .event \\\"context_injection\\\"}}\\U0001F4CE Context Injected:\\n{{ .request }}{{else if eq .event \\\"system_prompt\\\"}}\\U00002699 System Prompt:\\n{{ .request }}{{end}}\"",
           "refId": "A"
         }
       ],
@@ -214,9 +214,51 @@
       }
     },
     {
+      "type": "logs",
+      "title": "Context Injections",
+      "description": "KB snippets and dashboard context injected into LLM prompts",
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 24},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=\"context_injection\" | line_format \"Session: {{ .session_id }}\\nUser: {{ .user_id }}\\n{{ .request }}\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "dedupStrategy": "none",
+        "showCommonLabels": false,
+        "prettifyLogMessage": true
+      }
+    },
+    {
+      "type": "logs",
+      "title": "System Prompt Metadata",
+      "description": "System prompt configuration per session: length, dashboard context, tool count",
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 24},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=\"system_prompt\" | line_format \"Session: {{ .session_id }}\\n{{ .request }}\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "dedupStrategy": "none",
+        "showCommonLabels": false,
+        "prettifyLogMessage": true
+      }
+    },
+    {
       "type": "table",
       "title": "Recent Scratchpads",
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 34},
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {

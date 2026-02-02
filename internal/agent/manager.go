@@ -41,29 +41,71 @@ type Manager struct {
 	kbOnce            sync.Once
 	kbIndex           *kb.Index
 	kbErr             error
+
+	// Hybrid KB: vector search fields.
+	kbStructuredPath   string
+	kbVectorDBPath     string
+	kbVectorMaxResults int
+	kbVectorOnce       sync.Once
+	kbVectorIndex      *kb.VectorIndex
+	kbEmbedder         *kb.Embedder
+}
+
+// ManagerConfig holds configuration for the agent Manager.
+type ManagerConfig struct {
+	KBPath             string
+	KBMaxSections      int
+	KBMaxSectionChars  int
+	KBStructuredPath   string
+	KBVectorPath       string
+	KBVectorDBPath     string
+	KBEmbeddingModel   string
+	KBVectorMaxResults int
+	OpenAIAPIKey       string
 }
 
 // NewManager creates an agent manager.
-func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcontext.Enricher, store storage.Store, scratchpads *dashboard.Manager, kbPath string, kbMaxSections, kbMaxSectionChars int) *Manager {
-	if kbPath == "" {
-		kbPath = "KB"
+func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcontext.Enricher, store storage.Store, scratchpads *dashboard.Manager, cfg ManagerConfig) *Manager {
+	if cfg.KBPath == "" {
+		cfg.KBPath = "KB"
 	}
-	if kbMaxSections <= 0 {
-		kbMaxSections = 2
+	if cfg.KBMaxSections <= 0 {
+		cfg.KBMaxSections = 2
 	}
-	if kbMaxSectionChars <= 0 {
-		kbMaxSectionChars = 2000
+	if cfg.KBMaxSectionChars <= 0 {
+		cfg.KBMaxSectionChars = 2000
 	}
-	return &Manager{
-		llm:               llmClient,
-		mcp:               mcpClients,
-		enricher:          enricher,
-		store:             store,
-		scratchpads:       scratchpads,
-		kbPath:            kbPath,
-		kbMaxSections:     kbMaxSections,
-		kbMaxSectionChars: kbMaxSectionChars,
+	if cfg.KBVectorMaxResults <= 0 {
+		cfg.KBVectorMaxResults = 2
 	}
+
+	m := &Manager{
+		llm:                llmClient,
+		mcp:                mcpClients,
+		enricher:           enricher,
+		store:              store,
+		scratchpads:        scratchpads,
+		kbPath:             cfg.KBPath,
+		kbMaxSections:      cfg.KBMaxSections,
+		kbMaxSectionChars:  cfg.KBMaxSectionChars,
+		kbStructuredPath:   cfg.KBStructuredPath,
+		kbVectorDBPath:     cfg.KBVectorDBPath,
+		kbVectorMaxResults: cfg.KBVectorMaxResults,
+	}
+
+	// Create embedder if API key and vector path are configured.
+	if cfg.OpenAIAPIKey != "" && cfg.KBVectorPath != "" {
+		model := cfg.KBEmbeddingModel
+		if model == "" {
+			model = "text-embedding-3-small"
+		}
+		m.kbEmbedder = kb.NewEmbedder(cfg.OpenAIAPIKey, model)
+		slog.Info("KB vector search enabled", "vector_db", cfg.KBVectorDBPath, "model", model)
+	} else {
+		slog.Info("KB vector search disabled (no API key or vector path)")
+	}
+
+	return m
 }
 
 // DiscoverTools queries all MCP clients for available tools and caches them.
@@ -168,6 +210,30 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 
 	streamFn(api.StreamChunk{Type: "start", SessionID: sess.ID})
 
+	// Log system prompt metadata for audit trail.
+	if sess != nil {
+		now := time.Now()
+		promptMeta := map[string]any{
+			"prompt_length":          len(systemPrompt),
+			"has_dashboard_context":  dashCtx != nil,
+			"tool_count":             len(m.tools),
+		}
+		if dashCtx != nil {
+			promptMeta["dashboard_title"] = dashCtx.Title
+			promptMeta["panel_count"] = len(dashCtx.Panels)
+		}
+		_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
+			ID:           fmt.Sprintf("%s-%d-audit-sysprompt", sess.ID, now.UnixMilli()),
+			SessionID:    sess.ID,
+			UserID:       user.ID,
+			OrgID:        user.OrgID,
+			DashboardUID: sess.DashboardUID,
+			EventType:    "system_prompt",
+			Request:      marshalAuditValue(promptMeta),
+			CreatedAt:    now,
+		})
+	}
+
 	// 4. Add user message (sanitize control characters).
 	cleanMessage := sanitizeInput(req.Message)
 	kbContext := m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext)
@@ -178,6 +244,37 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		Role:    openai.ChatMessageRoleUser,
 		Content: cleanMessage,
 	})
+
+	// Log injected context as audit event.
+	if sess != nil && (kbContext != "" || dashCtx != nil) {
+		now := time.Now()
+		injection := map[string]any{}
+		if kbContext != "" {
+			injection["kb_context"] = kbContext
+		}
+		if dashCtx != nil {
+			injection["dashboard_context"] = dashCtx
+		}
+		_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
+			ID:           fmt.Sprintf("%s-%d-audit-context", sess.ID, now.UnixMilli()),
+			SessionID:    sess.ID,
+			UserID:       user.ID,
+			OrgID:        user.OrgID,
+			DashboardUID: sess.DashboardUID,
+			EventType:    "context_injection",
+			Request:      marshalAuditValue(injection),
+			CreatedAt:    now,
+		})
+		slog.InfoContext(ctx, "Context injected into prompt",
+			"event", "context_injection",
+			"session_id", sess.ID,
+			"user_id", user.ID,
+			"org_id", user.OrgID,
+			"dashboard_uid", sess.DashboardUID,
+			"has_kb_context", kbContext != "",
+			"has_dashboard_context", dashCtx != nil,
+		)
+	}
 
 	// Persist user message.
 	if sess != nil {

@@ -6,8 +6,11 @@ BIN := bin/assistant
 build: ## Build the Go binary
 	go build -o $(BIN) ./cmd/assistant
 
-kb-reindex: ## Build KB index from markdown files
-	go run ./cmd/kb-reindex -kb-path KB
+kb-reindex: ## Rebuild KB indexes (token + vector)
+	go run ./cmd/kb-reindex -structured-path KB/runbooks -vector-path KB/platform
+
+kb-reindex-token: ## Rebuild token index only (no API key needed)
+	go run ./cmd/kb-reindex -structured-path KB/runbooks
 
 run: build ## Build and run (foreground)
 	./$(BIN) -config config.yaml

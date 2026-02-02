@@ -24,7 +24,7 @@ genesyscloud_edge_cpu_percent reports CPU usage.
 		t.Fatalf("write file: %v", err)
 	}
 
-	mgr := NewManager(nil, nil, nil, nil, nil, dir, 2, 500)
+	mgr := NewManager(nil, nil, nil, nil, nil, ManagerConfig{KBPath: dir, KBMaxSections: 2, KBMaxSectionChars: 500})
 	dash := &appcontext.DashboardSummary{
 		Title: "Genesys Ops",
 		Panels: []appcontext.PanelSummary{

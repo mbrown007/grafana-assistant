@@ -273,7 +273,17 @@ func main() {
 
 	// Create agent manager.
 	scratchpadMgr := dashboard.NewManager(grafanaClient, cfg.ScratchpadFolder)
-	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store, scratchpadMgr, cfg.KBPath, cfg.KBMaxSections, cfg.KBMaxSectionChars)
+	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store, scratchpadMgr, agent.ManagerConfig{
+		KBPath:             cfg.KBPath,
+		KBMaxSections:      cfg.KBMaxSections,
+		KBMaxSectionChars:  cfg.KBMaxSectionChars,
+		KBStructuredPath:   cfg.KBStructuredPath,
+		KBVectorPath:       cfg.KBVectorPath,
+		KBVectorDBPath:     cfg.KBVectorDBPath,
+		KBEmbeddingModel:   cfg.KBEmbeddingModel,
+		KBVectorMaxResults: cfg.KBVectorMaxResults,
+		OpenAIAPIKey:       cfg.OpenAIAPIKey,
+	})
 	if len(mcpClients) > 0 {
 		if err := agentMgr.DiscoverTools(context.Background()); err != nil {
 			slog.Warn("failed to discover MCP tools", "error", err)

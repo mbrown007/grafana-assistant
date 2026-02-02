@@ -97,7 +97,28 @@ func main() {
 	}
 	log.Printf("Loaded KB sections: %d", len(index.Sections))
 
-	mcpServer := mcpserver.NewMCPServer(index)
+	var opts []mcpserver.MCPOption
+
+	// Set up vector search if configured.
+	vectorDBPath := os.Getenv("KB_VECTOR_DB_PATH")
+	apiKey := os.Getenv("ASSISTANT_OPENAI_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	embeddingModel := getEnv("KB_EMBEDDING_MODEL", "text-embedding-3-small")
+
+	if vectorDBPath != "" && apiKey != "" {
+		vi, err := kb.OpenVectorIndex(vectorDBPath)
+		if err != nil {
+			log.Printf("WARNING: failed to open vector index: %v (semantic search disabled)", err)
+		} else {
+			embedder := kb.NewEmbedder(apiKey, embeddingModel)
+			opts = append(opts, mcpserver.WithVectorSearch(vi, embedder))
+			log.Printf("Vector search enabled (sections=%d)", vi.Count())
+		}
+	}
+
+	mcpServer := mcpserver.NewMCPServer(index, opts...)
 	mcpServer.RegisterTools()
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)

@@ -48,6 +48,13 @@ type Config struct {
 	KBMaxSections     int `yaml:"kb_max_sections"`
 	KBMaxSectionChars int `yaml:"kb_max_section_chars"`
 
+	// Hybrid KB: structured (token) and vector paths.
+	KBStructuredPath   string `yaml:"kb_structured_path"`    // default: "KB/runbooks"
+	KBVectorPath       string `yaml:"kb_vector_path"`        // default: "" (disabled)
+	KBVectorDBPath     string `yaml:"kb_vector_db_path"`     // default: "KB/.kb_vectors.db"
+	KBEmbeddingModel   string `yaml:"kb_embedding_model"`    // default: "text-embedding-3-small"
+	KBVectorMaxResults int    `yaml:"kb_vector_max_results"` // default: 2
+
 	// Metrics.
 	MetricsEnabled bool `yaml:"metrics_enabled"`
 
@@ -98,9 +105,13 @@ func Load(path string) (*Config, error) {
 		DataRetentionDays: 30,
 		DBPath:            "data/assistant.db",
 		OpenAIModel:       "gpt-4o",
-		KBPath:            "KB",
-		KBMaxSections:     2,
-		KBMaxSectionChars: 2000,
+		KBPath:             "KB",
+		KBMaxSections:      2,
+		KBMaxSectionChars:  2000,
+		KBStructuredPath:   "KB/runbooks",
+		KBVectorDBPath:     "KB/.kb_vectors.db",
+		KBEmbeddingModel:   "text-embedding-3-small",
+		KBVectorMaxResults: 2,
 		ScratchpadTTLDays: 7,
 		ScratchpadFolder:  "Assistant Scratchpads",
 		AuditLogPath:      "/var/log/grafana-assistant/audit.log",
@@ -176,6 +187,25 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("invalid ASSISTANT_KB_MAX_SECTION_CHARS: %w", err)
 		}
 		cfg.KBMaxSectionChars = n
+	}
+	if v := os.Getenv("ASSISTANT_KB_STRUCTURED_PATH"); v != "" {
+		cfg.KBStructuredPath = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_VECTOR_PATH"); v != "" {
+		cfg.KBVectorPath = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_VECTOR_DB_PATH"); v != "" {
+		cfg.KBVectorDBPath = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_EMBEDDING_MODEL"); v != "" {
+		cfg.KBEmbeddingModel = v
+	}
+	if v := os.Getenv("ASSISTANT_KB_VECTOR_MAX_RESULTS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ASSISTANT_KB_VECTOR_MAX_RESULTS: %w", err)
+		}
+		cfg.KBVectorMaxResults = n
 	}
 
 	if err := cfg.Validate(); err != nil {

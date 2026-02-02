@@ -17,7 +17,7 @@ vendor/
 .env.*
 config.yaml
 
-# SQLite
+# SQLite (includes KB/.kb_vectors.db)
 *.db
 *.db-journal
 *.db-wal
