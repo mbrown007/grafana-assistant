@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatPanel } from './components/ChatPanel';
 import type { DashboardContext } from './types';
-import { parseDashboardUrl } from './utils/dashboard';
+import { parseDashboardUrl, parseExploreUrl } from './utils/dashboard';
 import chatLauncher from './assets/chat_with_agent.png';
 
 const GRAFANA_PATH = '/grafana/';
@@ -36,35 +36,60 @@ export function App() {
   useEffect(() => {
     let isMounted = true;
     const updateContextFromUrl = async (rawUrl: string) => {
-      const parsed = parseDashboardUrl(rawUrl);
-      if (!parsed) {
+      const parsedDashboard = parseDashboardUrl(rawUrl);
+      if (parsedDashboard) {
+        let summary: DashboardSummaryResponse | null = null;
+        try {
+          const response = await fetch(`/api/dashboard-context/${parsedDashboard.uid}`);
+          if (response.ok) {
+            summary = (await response.json()) as DashboardSummaryResponse;
+          }
+        } catch (error) {
+          console.warn('Failed to fetch dashboard context', error);
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setDashboardContext({
+          uid: parsedDashboard.uid,
+          name: summary?.title,
+          folder: summary?.folder,
+          tags: summary?.tags ?? [],
+          time_range: {
+            from: parsedDashboard.timeFrom ?? '',
+            to: parsedDashboard.timeTo ?? '',
+          },
+          variables: parsedDashboard.variables,
+        });
         return;
       }
 
-      let summary: DashboardSummaryResponse | null = null;
-      try {
-        const response = await fetch(`/api/dashboard-context/${parsed.uid}`);
-        if (response.ok) {
-          summary = (await response.json()) as DashboardSummaryResponse;
-        }
-      } catch (error) {
-        console.warn('Failed to fetch dashboard context', error);
+      const parsedExplore = parseExploreUrl(rawUrl);
+      if (!parsedExplore) {
+        return;
       }
 
       if (!isMounted) {
         return;
       }
 
+      const exploreName = parsedExplore.datasource
+        ? `Explore · ${parsedExplore.datasource}`
+        : 'Explore';
+
       setDashboardContext({
-        uid: parsed.uid,
-        name: summary?.title,
-        folder: summary?.folder,
-        tags: summary?.tags ?? [],
+        name: exploreName,
         time_range: {
-          from: parsed.timeFrom ?? '',
-          to: parsed.timeTo ?? '',
+          from: parsedExplore.timeFrom ?? '',
+          to: parsedExplore.timeTo ?? '',
         },
-        variables: parsed.variables,
+        variables: {},
+        explore: {
+          datasource: parsedExplore.datasource,
+          queries: parsedExplore.queries,
+        },
       });
 
     };

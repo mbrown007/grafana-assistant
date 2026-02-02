@@ -4,12 +4,18 @@ export interface DashboardTimeRange {
 }
 
 export interface DashboardContext {
-  uid: string;
+  uid?: string;
   name?: string;
   folder?: string;
   tags?: string[];
   time_range?: DashboardTimeRange;
   variables?: Record<string, string>;
+  explore?: ExploreContext;
+}
+
+export interface ExploreContext {
+  datasource?: string;
+  queries?: string[];
 }
 
 export interface ChatRequest {

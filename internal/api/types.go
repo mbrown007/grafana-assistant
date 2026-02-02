@@ -62,12 +62,18 @@ type ChatRequest struct {
 }
 
 type DashboardContext struct {
-	UID       string            `json:"uid"`
-	Name      string            `json:"name"`
+	UID       string            `json:"uid,omitempty"`
+	Name      string            `json:"name,omitempty"`
 	Folder    string            `json:"folder,omitempty"`
 	Tags      []string          `json:"tags,omitempty"`
 	TimeRange map[string]string `json:"time_range,omitempty"`
 	Variables map[string]string `json:"variables,omitempty"`
+	Explore   *ExploreContext   `json:"explore,omitempty"`
+}
+
+type ExploreContext struct {
+	Datasource string   `json:"datasource,omitempty"`
+	Queries    []string `json:"queries,omitempty"`
 }
 
 type ChatResponse struct {

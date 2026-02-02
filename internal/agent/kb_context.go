@@ -93,6 +93,11 @@ func buildKBQueryWeights(userMsg string, dashCtx *appcontext.DashboardSummary, r
 			addWeightedTokens(weights, kb.Tokenize(k), 2)
 			addWeightedTokens(weights, kb.Tokenize(v), 2)
 		}
+		if reqCtx.Explore != nil {
+			for _, q := range reqCtx.Explore.Queries {
+				addWeightedTokens(weights, kb.Tokenize(q), 3)
+			}
+		}
 	}
 
 	return weights

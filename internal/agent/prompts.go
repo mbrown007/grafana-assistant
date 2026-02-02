@@ -116,6 +116,18 @@ Colors: blue, green, red, amber, purple. Icons: alert, activity, server, cpu, me
 				}
 				b.WriteString(strings.Join(pairs, ", ") + "\n")
 			}
+
+			if reqCtx.Explore != nil {
+				if reqCtx.Explore.Datasource != "" {
+					b.WriteString(fmt.Sprintf("- **Explore Datasource**: %s\n", reqCtx.Explore.Datasource))
+				}
+				if len(reqCtx.Explore.Queries) > 0 {
+					b.WriteString("- **Explore Queries**:\n")
+					for _, q := range reqCtx.Explore.Queries {
+						b.WriteString(fmt.Sprintf("  - `%s`\n", q))
+					}
+				}
+			}
 		}
 
 		if dashCtx != nil && len(dashCtx.Panels) > 0 {
