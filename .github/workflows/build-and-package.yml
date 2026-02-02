@@ -82,7 +82,7 @@ jobs:
         echo "path=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: monitoring-assistant
         path: ${{ steps.create_archive.outputs.path }}
@@ -94,7 +94,7 @@ jobs:
 
     steps:
     - name: Download artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: monitoring-assistant
 
