@@ -118,6 +118,11 @@ Colors: blue, green, red, amber, purple. Icons: alert, activity, server, cpu, me
 			}
 
 			if reqCtx.Explore != nil {
+				if reqCtx.UID == "" {
+					b.WriteString("- **Context**: Grafana Explore (no dashboard UID available)\n")
+					b.WriteString("  - Do NOT call dashboard summary/panel tools unless the user provides a dashboard UID.\n")
+					b.WriteString("  - Use the Explore queries and datasource below as context instead.\n")
+				}
 				if reqCtx.Explore.Datasource != "" {
 					b.WriteString(fmt.Sprintf("- **Explore Datasource**: %s\n", reqCtx.Explore.Datasource))
 				}
