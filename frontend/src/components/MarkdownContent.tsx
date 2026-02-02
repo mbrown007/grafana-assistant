@@ -43,7 +43,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         elements.push(<em key={`italic-${key++}`}>{match[3] || match[4]}</em>);
       } else if (match[5]) {
         elements.push(
-          <code key={`code-${key++}`} className="inline-code">
+          <code key={`code-${key++}`} className="bg-muted px-1.5 py-0.5 rounded text-sm break-all">
             {match[5]}
           </code>
         );
@@ -92,7 +92,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         }
         i += 1;
         elements.push(
-          <pre key={`code-${key++}`} className="code-block">
+          <pre key={`code-${key++}`} className="bg-muted rounded-lg p-4 overflow-x-auto max-w-full">
             <code className={`language-${language}`}>{codeLines.join('\n')}</code>
           </pre>
         );
@@ -107,7 +107,10 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         elements.push(
           React.createElement(
             HeadingTag,
-            { key: `heading-${key++}`, className: `md-heading md-h${level}` },
+            {
+              key: `heading-${key++}`,
+              className: `mt-5 mb-2 font-semibold ${level === 1 ? 'text-xl' : level === 2 ? 'text-lg' : 'text-base'}`,
+            },
             parseInlineMarkdown(headingText)
           )
         );
@@ -146,12 +149,12 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         }
 
         elements.push(
-          <ol key={`ol-${key++}`} className="md-list">
+          <ol key={`ol-${key++}`} className="my-2 ml-5">
             {listItems.map((item, idx) => (
               <li key={`li-${key++}-${idx}`}>
                 {parseInlineMarkdown(item.main)}
                 {item.subItems.length > 0 && (
-                  <ul className="md-sublist">
+                  <ul className="mt-1 ml-4">
                     {item.subItems.map((sub, subIdx) => (
                       <li key={`sub-${key++}-${subIdx}`}>{parseInlineMarkdown(sub)}</li>
                     ))}
@@ -171,7 +174,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           i += 1;
         }
         elements.push(
-          <ul key={`ul-${key++}`} className="md-list">
+          <ul key={`ul-${key++}`} className="my-2 ml-5">
             {items.map((item, idx) => (
               <li key={`bullet-${key++}-${idx}`}>{parseInlineMarkdown(item)}</li>
             ))}
@@ -195,7 +198,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
 
       if (paragraphLines.length > 0) {
         elements.push(
-          <p key={`paragraph-${key++}`} className="md-paragraph">
+          <p key={`paragraph-${key++}`} className="my-2">
             {parseInlineMarkdown(paragraphLines.join('\n'))}
           </p>
         );

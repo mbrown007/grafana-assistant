@@ -21,7 +21,7 @@ describe('MarkdownContent', () => {
     render(<MarkdownContent content="Use `console.log` here" />);
     const code = screen.getByText('console.log');
     expect(code.tagName).toBe('CODE');
-    expect(code).toHaveClass('inline-code');
+    expect(code).toHaveClass('bg-muted');
   });
 
   it('renders code blocks', () => {

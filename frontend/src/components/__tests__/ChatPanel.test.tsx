@@ -30,7 +30,7 @@ describe('ChatPanel', () => {
   it('shows empty state with suggestions when authenticated', async () => {
     renderWithTheme(<ChatPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
     expect(screen.getByText('Summarize what this dashboard is showing')).toBeInTheDocument();
     expect(screen.getByText('Call out anomalies over the selected time range')).toBeInTheDocument();
@@ -52,10 +52,12 @@ describe('ChatPanel', () => {
 
     // Wait for auth to complete.
     await waitFor(() => {
-      expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText('Ask about this dashboard...');
+    const input = screen.getByPlaceholderText(
+      'Ask about this dashboard or anything else monitoring related...'
+    );
     expect(input).not.toBeDisabled();
   });
 
@@ -63,13 +65,15 @@ describe('ChatPanel', () => {
     renderWithTheme(<ChatPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
 
     const suggestion = screen.getByText('Summarize what this dashboard is showing');
     fireEvent.click(suggestion);
 
-    const input = screen.getByPlaceholderText('Ask about this dashboard...');
+    const input = screen.getByPlaceholderText(
+      'Ask about this dashboard or anything else monitoring related...'
+    );
     expect(input).toHaveValue('Summarize what this dashboard is showing');
   });
 
@@ -114,12 +118,14 @@ describe('ChatPanel', () => {
     const { container } = renderWithTheme(<ChatPanel onNavigate={onNavigate} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ask about this dashboard')).toBeInTheDocument();
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText('Ask about this dashboard...');
+    const input = screen.getByPlaceholderText(
+      'Ask about this dashboard or anything else monitoring related...'
+    );
     await userEvent.type(input, 'show me cpu');
-    const submit = container.querySelector('form.chat-input button[type="submit"]');
+    const submit = container.querySelector('form button[type="submit"]');
     expect(submit).not.toBeNull();
     await act(async () => {
       fireEvent.click(submit as HTMLButtonElement);

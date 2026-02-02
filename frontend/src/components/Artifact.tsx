@@ -28,6 +28,8 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 
 export interface ArtifactData {
   type: 'report' | 'chart' | 'table' | 'metric-cards' | 'raw';
@@ -105,29 +107,40 @@ export function parseArtifacts(content: string): { artifacts: ArtifactData[]; re
 
 function MetricCardTile({ metric }: { metric: MetricCard }) {
   const Icon = metric.icon && ICON_MAP[metric.icon] ? ICON_MAP[metric.icon] : Activity;
-  const colorClass = metric.color ? `metric-${metric.color}` : 'metric-blue';
+  const colorClass =
+    metric.color === 'green'
+      ? 'border-l-green-500'
+      : metric.color === 'red'
+        ? 'border-l-red-500'
+        : metric.color === 'amber'
+          ? 'border-l-amber-500'
+          : metric.color === 'purple'
+            ? 'border-l-purple-500'
+            : 'border-l-blue-500';
 
   return (
-    <div className={`metric-card ${colorClass}`}>
-      <div>
-        <div className="metric-label">{metric.label}</div>
-        <div className="metric-value">{metric.value}</div>
-        {metric.change !== undefined && (
-          <div className="metric-change">
-            {metric.change > 0 ? <TrendingUp size={14} /> : metric.change < 0 ? <TrendingDown size={14} /> : null}
-            <span>{metric.change > 0 ? '+' : ''}{metric.change}%</span>
-            {metric.changeLabel && <span className="metric-change-label">{metric.changeLabel}</span>}
-          </div>
-        )}
-      </div>
-      <Icon size={28} />
-    </div>
+    <Card className={`border-l-4 ${colorClass}`}>
+      <CardContent className="flex items-center justify-between p-3">
+        <div>
+          <div className="text-xs text-muted-foreground">{metric.label}</div>
+          <div className="text-xl font-semibold mt-1">{metric.value}</div>
+          {metric.change !== undefined && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+              {metric.change > 0 ? <TrendingUp size={14} /> : metric.change < 0 ? <TrendingDown size={14} /> : null}
+              <span>{metric.change > 0 ? '+' : ''}{metric.change}%</span>
+              {metric.changeLabel && <span className="opacity-70">{metric.changeLabel}</span>}
+            </div>
+          )}
+        </div>
+        <Icon size={28} />
+      </CardContent>
+    </Card>
   );
 }
 
 function ChartBlock({ data = [], chartType = 'bar' }: { data?: Array<Record<string, unknown>>; chartType?: 'bar' | 'line' | 'pie' | 'area' }) {
   if (!data || data.length === 0) {
-    return <div className="artifact-empty">No chart data available.</div>;
+    return <div className="text-center text-muted-foreground py-4">No chart data available.</div>;
   }
 
   const keys = Object.keys(data[0] || {}).filter((key) => key !== 'name' && key !== 'label' && typeof data[0][key] === 'number');
@@ -200,45 +213,43 @@ function ChartBlock({ data = [], chartType = 'bar' }: { data?: Array<Record<stri
 
 function TableBlock({ columns = [], rows = [] }: { columns?: TableColumn[]; rows?: Array<Record<string, unknown>> }) {
   if (!rows.length || !columns.length) {
-    return <div className="artifact-empty">No table data available.</div>;
+    return <div className="text-center text-muted-foreground py-4">No table data available.</div>;
   }
 
   return (
-    <div className="artifact-table">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} style={{ textAlign: column.align ?? 'left' }}>
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr key={`row-${idx}`}>
-              {columns.map((column) => (
-                <td key={`${column.key}-${idx}`} style={{ textAlign: column.align ?? 'left' }}>
-                  {String(row[column.key] ?? '')}
-                </td>
-              ))}
-            </tr>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {columns.map((column) => (
+            <TableHead key={column.key} style={{ textAlign: column.align ?? 'left' }}>
+              {column.label}
+            </TableHead>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, idx) => (
+          <TableRow key={`row-${idx}`}>
+            {columns.map((column) => (
+              <TableCell key={`${column.key}-${idx}`} style={{ textAlign: column.align ?? 'left' }}>
+                {String(row[column.key] ?? '')}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
 function ReportSectionBlock({ section }: { section: ReportSection }) {
   if (section.type === 'metrics' && section.metrics) {
     return (
-      <div className="metric-grid">
-        {section.metrics.map((metric, idx) => (
-          <MetricCardTile key={`${metric.label}-${idx}`} metric={metric} />
-        ))}
-      </div>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+          {section.metrics.map((metric, idx) => (
+            <MetricCardTile key={`${metric.label}-${idx}`} metric={metric} />
+          ))}
+        </div>
     );
   }
 
@@ -250,7 +261,7 @@ function ReportSectionBlock({ section }: { section: ReportSection }) {
     return <TableBlock columns={section.columns} rows={section.rows} />;
   }
 
-  return <p className="artifact-text">{section.content}</p>;
+  return <p className="m-0 text-muted-foreground">{section.content}</p>;
 }
 
 export function Artifact({ artifact }: { artifact: ArtifactData }) {
@@ -263,7 +274,7 @@ export function Artifact({ artifact }: { artifact: ArtifactData }) {
     }
     if (artifact.type === 'metric-cards') {
       return (
-        <div className="metric-grid">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
           {artifact.metrics?.map((metric, idx) => (
             <MetricCardTile key={`${metric.label}-${idx}`} metric={metric} />
           ))}
@@ -272,10 +283,10 @@ export function Artifact({ artifact }: { artifact: ArtifactData }) {
     }
     if (artifact.type === 'report') {
       return (
-        <div className="artifact-report">
+        <div className="grid gap-4">
           {artifact.sections?.map((section, idx) => (
-            <div key={`${section.type}-${idx}`} className="artifact-section">
-              {section.title && <div className="artifact-section-title">{section.title}</div>}
+            <div key={`${section.type}-${idx}`}>
+              {section.title && <div className="font-semibold mb-2">{section.title}</div>}
               <ReportSectionBlock section={section} />
             </div>
           ))}
@@ -284,22 +295,26 @@ export function Artifact({ artifact }: { artifact: ArtifactData }) {
     }
 
     return (
-      <pre className="artifact-raw">
+      <pre className="whitespace-pre-wrap bg-muted rounded-lg p-3 text-muted-foreground">
         {JSON.stringify(artifact, null, 2)}
       </pre>
     );
   }, [artifact]);
 
   return (
-    <div className="artifact-card">
+    <Card>
       {(artifact.title || artifact.subtitle || artifact.description) && (
-        <div className="artifact-header">
-          {artifact.title && <div className="artifact-title">{artifact.title}</div>}
-          {artifact.subtitle && <div className="artifact-subtitle">{artifact.subtitle}</div>}
-          {artifact.description && <div className="artifact-description">{artifact.description}</div>}
-        </div>
+        <CardHeader>
+          {artifact.title && <CardTitle>{artifact.title}</CardTitle>}
+          {artifact.subtitle && <CardDescription>{artifact.subtitle}</CardDescription>}
+          {artifact.description && (
+            <div className="text-xs text-muted-foreground mt-1">{artifact.description}</div>
+          )}
+        </CardHeader>
       )}
-      {content}
-    </div>
+      <CardContent className={artifact.title || artifact.subtitle || artifact.description ? '' : 'pt-4'}>
+        {content}
+      </CardContent>
+    </Card>
   );
 }

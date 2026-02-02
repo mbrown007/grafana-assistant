@@ -39,9 +39,11 @@ describe('parseArtifacts', () => {
   });
 
   it('handles invalid JSON gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const content = '```artifact\n{invalid json}\n```';
     const { artifacts } = parseArtifacts(content);
     expect(artifacts).toHaveLength(0);
+    consoleSpy.mockRestore();
   });
 });
 

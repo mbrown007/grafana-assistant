@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, X, Moon } from 'lucide-react';
+import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, Moon } from 'lucide-react';
 import type { CurrentUser, DashboardContext, HistorySession, Message, ToolCall } from '../types';
 import { chatApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
@@ -7,6 +7,7 @@ import { Artifact, parseArtifacts } from './Artifact';
 import { useTheme } from './ThemeProvider';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Card, CardContent } from './ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,8 +16,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { Switch } from './ui/switch';
 import { Input } from './ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
 import flavioAvatar from '../assets/flavio.png';
 
 interface ChatPanelProps {
@@ -281,15 +284,15 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
 
   return (
     <div className="chat-panel">
-      <div className="chat-header">
+      <div className="w-full max-w-[360px] px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div>
-          <div className="chat-title">Powered by Sabio Monitoring</div>
-          <div className="chat-subtitle">
+          <div className="text-base font-semibold truncate">Powered by Sabio Monitoring</div>
+          <div className="text-xs text-muted-foreground mt-0.5">
             {contextLabel}
             {currentUser ? ` · ${currentUser.login}` : ''}
           </div>
         </div>
-        <div className="chat-header-actions">
+        <div className="inline-flex items-center gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -334,55 +337,67 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         </div>
       </div>
 
-      <div className="chat-messages">
+      <div className="flex-1 w-full max-w-[360px] overflow-y-auto overflow-x-hidden px-4 py-3 flex flex-col gap-4">
         {messages.length === 0 ? (
-          <div className="chat-empty">
-            <div className="chat-empty-card">
+          <div className="flex-1 grid place-items-center">
+            <Card className="w-full max-w-[320px] text-center shadow-lg">
               {chatDisabled ? (
                 <>
-                  <h3>Waiting for Grafana login</h3>
-                  <p>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="space-y-2">
+                      <h3 className="text-base font-semibold">Waiting for Grafana login</h3>
+                      <p className="text-sm text-muted-foreground">
                     {authLoading
                       ? 'Confirming your Grafana session...'
                       : 'Log into Grafana in the left pane to start a chat.'}
-                  </p>
-                  {authError && <p className="chat-error">{authError}</p>}
-                  <div className="chip-row">
-                    <button
-                      type="button"
-                      className="chip"
-                      onClick={() => void loadCurrentUser()}
-                      disabled={authLoading}
-                    >
-                      Retry login
-                    </button>
-                  </div>
+                      </p>
+                    </div>
+                    {authError && <p className="text-red-400 text-sm">{authError}</p>}
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => void loadCurrentUser()}
+                        disabled={authLoading}
+                      >
+                        Retry login
+                      </Button>
+                    </div>
+                  </CardContent>
                 </>
               ) : (
                 <>
-                  <div className="chat-empty-greeting">
-                    <Avatar className="assistant-avatar">
-                      <AvatarImage src={flavioAvatar} alt="Flavio" />
-                      <AvatarFallback>SF</AvatarFallback>
-                    </Avatar>
-                    <p>Hello, my name is Flavio, part of the Sabio Monitoring team.</p>
-                  </div>
-                  <h3>Ask about this dashboard or anything else monitoring related</h3>
-                  <div className="chip-row">
-                    {SUGGESTIONS.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        className="chip"
-                        onClick={() => handleSuggestion(suggestion)}
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="grid gap-2 justify-items-center">
+                      <Avatar className="assistant-avatar h-14 w-14">
+                        <AvatarImage src={flavioAvatar} alt="Flavio" />
+                        <AvatarFallback>SF</AvatarFallback>
+                      </Avatar>
+                      <h3 className="text-base font-semibold">Hi, I'm Flavio</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Part of the Sabio Monitoring team. Ask me about this dashboard or anything else monitoring related.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {SUGGESTIONS.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => handleSuggestion(suggestion)}
+                        >
+                          {suggestion}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
                 </>
               )}
-            </div>
+            </Card>
           </div>
         ) : (
           messages.map((message) => {
@@ -393,51 +408,65 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
               : { artifacts: [], remainingContent: message.content };
 
             return (
-              <div key={message.id} className={`chat-message ${message.role}`}>
-                <div className="message-row">
+              <div key={message.id} className={`flex flex-col gap-2 ${message.role}`}>
+                <div className="flex flex-col gap-2 w-full">
                   {isAssistant && (
-                    <div className="assistant-avatar-row">
+                    <div className="flex justify-start -mb-3 pl-2 z-[1]">
                       <Avatar className="assistant-avatar">
                         <AvatarImage src={flavioAvatar} alt="Flavio" />
                         <AvatarFallback>SF</AvatarFallback>
                       </Avatar>
                     </div>
                   )}
-                  <div className="message-bubble">
+                  <Card
+                    className={
+                      isAssistant
+                        ? 'max-w-full p-3 pt-5'
+                        : 'max-w-full p-3 bg-primary/10 border-primary/20'
+                    }
+                  >
                     {remainingContent.trim().length > 0 && (
                       <MarkdownContent content={remainingContent} />
                     )}
                     {message.isStreaming && (
-                      <div className="streaming-indicator">
-                        <Loader2 size={16} />
+                      <div className="inline-flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                        <Loader2 size={16} className="animate-spin" />
                         Streaming response...
                       </div>
                     )}
-                  </div>
+                  </Card>
                 </div>
                 {message.toolCalls && message.toolCalls.length > 0 && (
-                  <div className="tool-calls">
+                  <div className="flex flex-col gap-2">
                     {message.toolCalls.map((call) => (
-                      <details key={call.id} className="tool-call">
-                        <summary>
-                          <Wrench size={14} /> {call.tool}
-                        </summary>
-                        <div className="tool-body">
-                          <div>
-                            <div className="tool-label">Arguments</div>
-                            <pre>{JSON.stringify(call.arguments, null, 2)}</pre>
-                          </div>
-                          <div>
-                            <div className="tool-label">Result</div>
-                            <pre>{JSON.stringify(call.output, null, 2)}</pre>
-                          </div>
-                        </div>
-                      </details>
+                      <Card key={call.id} className="overflow-hidden">
+                        <Collapsible>
+                          <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-accent">
+                            <Wrench size={14} /> {call.tool}
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <CardContent className="space-y-3 pt-0">
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-1">Arguments</div>
+                                <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
+                                  {JSON.stringify(call.arguments, null, 2)}
+                                </pre>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground mb-1">Result</div>
+                                <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
+                                  {JSON.stringify(call.output, null, 2)}
+                                </pre>
+                              </div>
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </Card>
                     ))}
                   </div>
                 )}
                 {showArtifacts && artifacts.length > 0 && (
-                  <div className="artifact-stack">
+                  <div className="grid gap-3">
                     {artifacts.map((artifact, index) => (
                       <Artifact key={`${artifact.type}-${index}`} artifact={artifact} />
                     ))}
@@ -450,73 +479,71 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         <div ref={messagesEndRef} />
       </div>
 
-      <form className="chat-input" onSubmit={handleSubmit}>
+      <form className="w-full max-w-[360px] px-4 py-3 border-t border-border flex gap-2" onSubmit={handleSubmit}>
         <Input
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder="Ask about this dashboard or anything else monitoring related..."
           type="text"
           disabled={chatDisabled}
-          className="chat-input-field h-10"
+          className="h-10 flex-1"
         />
         <Button
           type="submit"
           size="icon"
           disabled={isLoading || !input.trim() || chatDisabled}
-          className="chat-input-send"
+          className="h-10 w-10"
         >
           {isLoading ? <Loader2 size={16} /> : <Send size={16} />}
         </Button>
       </form>
 
-      <div className={`history-panel ${showHistory ? 'open' : ''}`}>
-        <div className="history-header">
-          <div>
-            <div className="history-title">Previous chats</div>
-            <div className="history-subtitle">Pick a conversation or delete it.</div>
+      <Sheet open={showHistory} onOpenChange={setShowHistory}>
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>Previous chats</SheetTitle>
+            <SheetDescription>Pick a conversation or delete it.</SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            {historyLoading ? (
+              <div className="text-muted-foreground text-center py-6 text-sm">Loading...</div>
+            ) : historyError ? (
+              <div className="text-red-400 text-center py-6 text-sm">{historyError}</div>
+            ) : historyItems.length === 0 ? (
+              <div className="text-muted-foreground text-center py-6 text-sm">No previous chats yet.</div>
+            ) : (
+              <div className="grid gap-3">
+                {historyItems.map((session) => {
+                  const title = session.title || 'Untitled chat';
+                  const when = new Date(session.updated_at).toLocaleString();
+                  return (
+                    <Card key={session.id} className="flex items-center justify-between gap-3 p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectHistory(session)}
+                        className="text-left flex-1"
+                      >
+                        <div className="text-sm font-semibold">{title}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{when}</div>
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteHistory(session)}
+                        aria-label="Delete chat"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => setShowHistory(false)}
-            aria-label="Close history"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="history-body">
-          {historyLoading ? (
-            <div className="history-status">Loading...</div>
-          ) : historyError ? (
-            <div className="history-status error">{historyError}</div>
-          ) : historyItems.length === 0 ? (
-            <div className="history-status">No previous chats yet.</div>
-          ) : (
-            <div className="history-list">
-              {historyItems.map((session) => {
-                const title = session.title || 'Untitled chat';
-                const when = new Date(session.updated_at).toLocaleString();
-                return (
-                  <div key={session.id} className="history-item">
-                    <button type="button" onClick={() => handleSelectHistory(session)}>
-                      <div className="history-item-title">{title}</div>
-                      <div className="history-item-meta">{when}</div>
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button danger"
-                      onClick={() => handleDeleteHistory(session)}
-                      aria-label="Delete chat"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
