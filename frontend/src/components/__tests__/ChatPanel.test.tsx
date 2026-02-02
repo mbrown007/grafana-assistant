@@ -55,9 +55,7 @@ describe('ChatPanel', () => {
       expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(
-      'Ask about this dashboard or anything else monitoring related...'
-    );
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
     expect(input).not.toBeDisabled();
   });
 
@@ -71,9 +69,7 @@ describe('ChatPanel', () => {
     const suggestion = screen.getByText('Summarize what this dashboard is showing');
     fireEvent.click(suggestion);
 
-    const input = screen.getByPlaceholderText(
-      'Ask about this dashboard or anything else monitoring related...'
-    );
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
     expect(input).toHaveValue('Summarize what this dashboard is showing');
   });
 
@@ -121,9 +117,7 @@ describe('ChatPanel', () => {
       expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText(
-      'Ask about this dashboard or anything else monitoring related...'
-    );
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
     await userEvent.type(input, 'show me cpu');
     const submit = container.querySelector('form button[type="submit"]');
     expect(submit).not.toBeNull();

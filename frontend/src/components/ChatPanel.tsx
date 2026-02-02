@@ -18,7 +18,7 @@ import {
 } from './ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { Switch } from './ui/switch';
-import { Input } from './ui/input';
+import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
 import flavioAvatar from '../assets/flavio.png';
 
@@ -48,6 +48,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   const [authError, setAuthError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const lastNavigateRef = useRef<string>('');
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const { theme, setTheme } = useTheme();
 
   const contextLabel = useMemo(() => {
@@ -87,6 +88,18 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   useEffect(() => {
     void loadCurrentUser();
   }, [loadCurrentUser]);
+
+  useEffect(() => {
+    if (currentUser || authLoading) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void loadCurrentUser();
+    }, 5000);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [authLoading, currentUser, loadCurrentUser]);
 
   const appendMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
@@ -277,7 +290,19 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
       return;
     }
     setInput(suggestion);
+    requestAnimationFrame(() => {
+      autoResizeInput();
+    });
   };
+
+  const autoResizeInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, []);
 
   const chatDisabled = authLoading || !currentUser;
   const isDarkMode = theme === 'dark';
@@ -480,13 +505,26 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
       </div>
 
       <form className="w-full max-w-[360px] px-4 py-3 border-t border-border flex gap-2" onSubmit={handleSubmit}>
-        <Input
+        <textarea
+          ref={inputRef}
           value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask about this dashboard or anything else monitoring related..."
-          type="text"
+          onChange={(event) => {
+            setInput(event.target.value);
+            autoResizeInput();
+          }}
+          placeholder="Ask about this dashboard"
+          rows={1}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void sendMessage(input);
+            }
+          }}
           disabled={chatDisabled}
-          className="h-10 flex-1"
+          className={cn(
+            'flex-1 min-h-[40px] max-h-[140px] resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+            isLoading && 'opacity-80'
+          )}
         />
         <Button
           type="submit"
