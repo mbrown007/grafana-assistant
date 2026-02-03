@@ -53,6 +53,31 @@ type StreamChunk struct {
 	ToolID    string                 `json:"tool_id,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
 	Result    interface{}            `json:"result,omitempty"`
+	Evidence  *EvidencePayload       `json:"evidence,omitempty"`
+}
+
+type EvidencePayload struct {
+	KBSearch     *KBSearchEvidence     `json:"kb_search,omitempty"`
+	VectorSearch *VectorSearchEvidence `json:"vector_search,omitempty"`
+}
+
+type EvidenceResult struct {
+	ID      string  `json:"id,omitempty"`
+	Path    string  `json:"path,omitempty"`
+	Title   string  `json:"title,omitempty"`
+	Excerpt string  `json:"excerpt,omitempty"`
+	Score   float64 `json:"score,omitempty"`
+	Source  string  `json:"source,omitempty"`
+}
+
+type KBSearchEvidence struct {
+	Query   string           `json:"query"`
+	Results []EvidenceResult `json:"results"`
+}
+
+type VectorSearchEvidence struct {
+	Query   string           `json:"query"`
+	Results []EvidenceResult `json:"results"`
 }
 
 type ChatRequest struct {
@@ -99,4 +124,11 @@ type HistoryMessage struct {
 type HistoryDetail struct {
 	Session  HistorySession  `json:"session"`
 	Messages []HistoryMessage `json:"messages"`
+}
+
+type FeedbackRequest struct {
+	SessionID string `json:"session_id"`
+	MessageID string `json:"message_id"`
+	Rating    int    `json:"rating"`
+	Comment   string `json:"comment,omitempty"`
 }

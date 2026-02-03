@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, Wrench, MoreVertical, History, Plus, Trash2, Moon } from 'lucide-react';
-import type { CurrentUser, DashboardContext, HistorySession, Message, ToolCall } from '../types';
-import { chatApi, historyApi, userApi } from '../services/api';
+import { Send, Loader2, MoreVertical, History, Plus, Trash2, Moon, X, Star, Check } from 'lucide-react';
+import type {
+  CurrentUser,
+  DashboardContext,
+  EvidencePayload,
+  EvidenceResult,
+  HistorySession,
+  Message,
+  ToolCall,
+} from '../types';
+import { chatApi, feedbackApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
 import { useTheme } from './ThemeProvider';
@@ -16,7 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
@@ -34,12 +41,32 @@ const SUGGESTIONS = [
   'Which panels look risky right now?'
 ];
 
+const STREAMING_STATUS = [
+  'Thinking...',
+  'Reviewing context...',
+  'Using tools...',
+  'Crunching the data...',
+  'Double-checking results...',
+  'Finalizing response...'
+];
+
 export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
+  const [evidenceModal, setEvidenceModal] = useState<{
+    messageId: string;
+    type: 'tool' | 'kb' | 'vector';
+  } | null>(null);
+  const [feedbackModal, setFeedbackModal] = useState<{ messageId: string } | null>(null);
+  const [feedbackDrafts, setFeedbackDrafts] = useState<
+    Record<string, { rating: number; comment: string; submitted: boolean }>
+  >({});
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [streamingStatusIndex, setStreamingStatusIndex] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -86,6 +113,20 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
+    const isStreaming = messages.some((msg) => msg.role === 'assistant' && msg.isStreaming);
+    if (!isStreaming) {
+      setStreamingStatusIndex(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setStreamingStatusIndex((prev) => (prev + 1) % STREAMING_STATUS.length);
+    }, 2200);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [messages]);
+
+  useEffect(() => {
     void loadCurrentUser();
   }, [loadCurrentUser]);
 
@@ -103,6 +144,22 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
 
   const appendMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
+  }, []);
+
+  const getFeedbackDraft = useCallback(
+    (messageId: string) =>
+      feedbackDrafts[messageId] ?? { rating: 0, comment: '', submitted: false },
+    [feedbackDrafts]
+  );
+
+  const mergeEvidence = useCallback((current: EvidencePayload | undefined, incoming: EvidencePayload | undefined) => {
+    if (!incoming) {
+      return current;
+    }
+    return {
+      kb_search: incoming.kb_search ?? current?.kb_search,
+      vector_search: incoming.vector_search ?? current?.vector_search,
+    };
   }, []);
 
   const startNewChat = useCallback(() => {
@@ -217,13 +274,18 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
 
           if (chunk.type === 'tool') {
             const toolId = chunk.tool_id ?? `${chunk.tool ?? 'tool'}-${toolCounter++}`;
+            const existingIndex = toolCalls.findIndex((call) => call.id === toolId);
+            const existingCall = existingIndex >= 0 ? toolCalls[existingIndex] : undefined;
+            const nextArguments =
+              chunk.arguments && Object.keys(chunk.arguments).length > 0
+                ? chunk.arguments
+                : existingCall?.arguments || {};
             const toolCall: ToolCall = {
               id: toolId,
-              tool: chunk.tool || 'tool',
-              arguments: chunk.arguments || {},
-              output: chunk.result,
+              tool: chunk.tool || existingCall?.tool || 'tool',
+              arguments: nextArguments,
+              output: chunk.result ?? existingCall?.output,
             };
-            const existingIndex = toolCalls.findIndex((call) => call.id === toolId);
             if (existingIndex >= 0) {
               toolCalls = toolCalls.map((call) => (call.id === toolId ? toolCall : call));
             } else {
@@ -240,6 +302,14 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                 onNavigate(result.url);
               }
             }
+          }
+
+          if (chunk.type === 'evidence') {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantId ? { ...msg, evidence: mergeEvidence(msg.evidence, chunk.evidence) } : msg
+              )
+            );
           }
 
           if (chunk.type === 'complete' && chunk.message && accumulated.trim().length === 0) {
@@ -428,6 +498,11 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
           messages.map((message) => {
             const isAssistant = message.role === 'assistant';
             const showArtifacts = isAssistant && !message.isStreaming;
+            const hasToolCalls = isAssistant && !!message.toolCalls && message.toolCalls.length > 0;
+            const hasKBEvidence = isAssistant && !!message.evidence?.kb_search?.results?.length;
+            const hasVectorEvidence = isAssistant && !!message.evidence?.vector_search?.results?.length;
+            const feedbackDraft = getFeedbackDraft(message.id);
+            const feedbackSubmitted = feedbackDraft.submitted;
             const { artifacts, remainingContent } = showArtifacts
               ? parseArtifacts(message.content)
               : { artifacts: [], remainingContent: message.content };
@@ -456,38 +531,62 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                     {message.isStreaming && (
                       <div className="inline-flex items-center gap-2 text-xs text-muted-foreground mt-2">
                         <Loader2 size={16} className="animate-spin" />
-                        Streaming response...
+                        {STREAMING_STATUS[streamingStatusIndex]}
                       </div>
                     )}
                   </Card>
                 </div>
-                {message.toolCalls && message.toolCalls.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    {message.toolCalls.map((call) => (
-                      <Card key={call.id} className="overflow-hidden">
-                        <Collapsible>
-                          <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-accent">
-                            <Wrench size={14} /> {call.tool}
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <CardContent className="space-y-3 pt-0">
-                              <div>
-                                <div className="text-xs text-muted-foreground mb-1">Arguments</div>
-                                <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                  {JSON.stringify(call.arguments, null, 2)}
-                                </pre>
-                              </div>
-                              <div>
-                                <div className="text-xs text-muted-foreground mb-1">Result</div>
-                                <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                  {JSON.stringify(call.output, null, 2)}
-                                </pre>
-                              </div>
-                            </CardContent>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      </Card>
-                    ))}
+                {(hasToolCalls || hasKBEvidence || hasVectorEvidence || (isAssistant && !message.isStreaming)) && (
+                  <div className="flex flex-wrap gap-2 pl-2">
+                    {hasToolCalls && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => setEvidenceModal({ messageId: message.id, type: 'tool' })}
+                      >
+                        Tool calls ({message.toolCalls?.length ?? 0})
+                      </Button>
+                    )}
+                    {hasKBEvidence && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => setEvidenceModal({ messageId: message.id, type: 'kb' })}
+                      >
+                        KB search
+                      </Button>
+                    )}
+                    {hasVectorEvidence && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => setEvidenceModal({ messageId: message.id, type: 'vector' })}
+                      >
+                        Vector search
+                      </Button>
+                    )}
+                    {isAssistant && !message.isStreaming && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        disabled={feedbackSubmitted}
+                        onClick={() => {
+                          setFeedbackError(null);
+                          setFeedbackModal({ messageId: message.id });
+                        }}
+                      >
+                        Feedback
+                        {feedbackSubmitted && <Check size={14} className="text-emerald-500" />}
+                      </Button>
+                    )}
                   </div>
                 )}
                 {showArtifacts && artifacts.length > 0 && (
@@ -582,6 +681,250 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
           </div>
         </SheetContent>
       </Sheet>
+      {evidenceModal && (() => {
+        const selectedMessage = messages.find((msg) => msg.id === evidenceModal.messageId);
+        const title =
+          evidenceModal.type === 'tool'
+            ? 'Tool calls'
+            : evidenceModal.type === 'kb'
+              ? 'KB search'
+              : 'Vector search';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-[720px] max-h-[80vh] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div className="text-sm font-semibold">{title}</div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close evidence"
+                  onClick={() => setEvidenceModal(null)}
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[72vh] space-y-4">
+                {evidenceModal.type === 'tool' && (
+                  <>
+                    {(selectedMessage?.toolCalls || []).length === 0 ? (
+                      <div className="text-sm text-muted-foreground">No tool calls recorded for this response.</div>
+                    ) : (
+                      selectedMessage?.toolCalls?.map((call) => (
+                        <Card key={call.id} className="border border-border">
+                          <CardContent className="space-y-3 p-4">
+                            <div className="text-sm font-semibold">{call.tool}</div>
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Arguments</div>
+                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
+                                {JSON.stringify(call.arguments, null, 2)}
+                              </pre>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground mb-1">Result</div>
+                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
+                                {JSON.stringify(call.output, null, 2)}
+                              </pre>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </>
+                )}
+                {evidenceModal.type === 'kb' && (
+                  <>
+                    {selectedMessage?.evidence?.kb_search ? (
+                      <EvidenceBlock
+                        title="Query"
+                        value={selectedMessage.evidence.kb_search.query}
+                        results={selectedMessage.evidence.kb_search.results}
+                      />
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No KB search results for this response.</div>
+                    )}
+                  </>
+                )}
+                {evidenceModal.type === 'vector' && (
+                  <>
+                    {selectedMessage?.evidence?.vector_search ? (
+                      <EvidenceBlock
+                        title="Query"
+                        value={selectedMessage.evidence.vector_search.query}
+                        results={selectedMessage.evidence.vector_search.results}
+                      />
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No vector search results for this response.</div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {feedbackModal && (() => {
+        const draft = getFeedbackDraft(feedbackModal.messageId);
+        const submitted = draft.submitted;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div className="text-sm font-semibold">Feedback</div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close feedback"
+                  onClick={() => setFeedbackModal(null)}
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+              <div className="p-4 space-y-4">
+                {submitted ? (
+                  <div className="text-sm text-muted-foreground">
+                    Thanks! Your feedback has been recorded.
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-2">Usefulness</div>
+                      <div className="flex items-center gap-2">
+                        {Array.from({ length: 5 }, (_, index) => {
+                          const value = index + 1;
+                          const active = value <= draft.rating;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className={cn(
+                                'h-9 w-9 inline-flex items-center justify-center rounded-md border border-border transition-colors',
+                                active ? 'text-amber-400 border-amber-400' : 'text-muted-foreground'
+                              )}
+                              aria-label={`Rate ${value} star${value === 1 ? '' : 's'}`}
+                              onClick={() =>
+                                setFeedbackDrafts((prev) => ({
+                                  ...prev,
+                                  [feedbackModal.messageId]: {
+                                    ...draft,
+                                    rating: value,
+                                  },
+                                }))
+                              }
+                            >
+                              <Star size={18} className={active ? 'fill-amber-400' : ''} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-2">Notes</div>
+                      <textarea
+                        rows={4}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        placeholder="What was helpful or missing?"
+                        value={draft.comment}
+                        onChange={(event) =>
+                          setFeedbackDrafts((prev) => ({
+                            ...prev,
+                            [feedbackModal.messageId]: {
+                              ...draft,
+                              comment: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    {feedbackError && <div className="text-sm text-red-400">{feedbackError}</div>}
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="secondary" onClick={() => setFeedbackModal(null)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={feedbackSubmitting || draft.rating === 0}
+                        onClick={async () => {
+                          if (!sessionId) {
+                            setFeedbackError('Session not ready yet. Please try again.');
+                            return;
+                          }
+                          setFeedbackSubmitting(true);
+                          setFeedbackError(null);
+                          try {
+                            await feedbackApi.submit({
+                              session_id: sessionId,
+                              message_id: feedbackModal.messageId,
+                              rating: draft.rating,
+                              comment: draft.comment,
+                            });
+                            setFeedbackDrafts((prev) => ({
+                              ...prev,
+                              [feedbackModal.messageId]: {
+                                ...draft,
+                                submitted: true,
+                              },
+                            }));
+                            setFeedbackModal(null);
+                          } catch (error) {
+                            setFeedbackError(
+                              error instanceof Error ? error.message : 'Failed to submit feedback.'
+                            );
+                          } finally {
+                            setFeedbackSubmitting(false);
+                          }
+                        }}
+                      >
+                        {feedbackSubmitting ? 'Sending...' : 'Send feedback'}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function EvidenceBlock({
+  title,
+  value,
+  results,
+}: {
+  title: string;
+  value: string;
+  results: EvidenceResult[];
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="text-xs text-muted-foreground mb-1">{title}</div>
+        <div className="text-sm">{value}</div>
+      </div>
+      <div className="space-y-3">
+        {results.map((result, index) => (
+          <Card key={`${result.path ?? result.id ?? index}`} className="border border-border">
+            <CardContent className="space-y-2 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold">{result.title || result.path || 'Untitled'}</div>
+                {typeof result.score === 'number' && (
+                  <div className="text-xs text-muted-foreground">Score: {result.score.toFixed(2)}</div>
+                )}
+              </div>
+              {result.path && <div className="text-xs text-muted-foreground">{result.path}</div>}
+              {result.excerpt && (
+                <pre className="bg-muted rounded-md p-2 text-xs whitespace-pre-wrap">{result.excerpt}</pre>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

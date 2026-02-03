@@ -349,6 +349,7 @@ func main() {
 	appMux.HandleFunc("GET /api/history", api.HistoryListHandler(store, sessionResolver))
 	appMux.HandleFunc("GET /api/history/{id}", api.HistoryDetailHandler(store, sessionResolver))
 	appMux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
+	appMux.HandleFunc("POST /api/feedback", api.FeedbackHandler(store, sessionResolver))
 	appMux.HandleFunc("GET /api/me", api.CurrentUserHandler(sessionResolver))
 
 	// Grafana reverse proxy

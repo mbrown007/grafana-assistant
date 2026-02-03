@@ -200,7 +200,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call|context_injection|system_prompt\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}\\nArgs: {{ .request }}\\nResult: {{ .response }}{{else if eq .event \\\"context_injection\\\"}}\\U0001F4CE Context Injected:\\n{{ .request }}{{else if eq .event \\\"system_prompt\\\"}}\\U00002699 System Prompt:\\n{{ .request }}{{end}}\"",
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | session_id=~\"$session_id\" | event=~\"user_message|assistant_response|tool_call|context_injection|system_prompt|user_feedback\" | line_format \"{{if eq .event \\\"user_message\\\"}}\\U0001F464 User:\\n{{ .request }}{{else if eq .event \\\"assistant_response\\\"}}\\U0001F916 Assistant:\\n{{ .response }}{{else if eq .event \\\"tool_call\\\"}}\\U0001F527 Tool: {{ .tool_name }}\\nArgs: {{ .request }}\\nResult: {{ .response }}{{else if eq .event \\\"context_injection\\\"}}\\U0001F4CE Context Injected:\\n{{ .request }}{{else if eq .event \\\"system_prompt\\\"}}\\U00002699 System Prompt:\\n{{ .request }}{{else if eq .event \\\"user_feedback\\\"}}\\u2B50 Feedback:\\n{{ .request }}{{end}}\"",
           "refId": "A"
         }
       ],
@@ -275,6 +275,60 @@
           }
         }
       ]
+    },
+    {
+      "type": "stat",
+      "title": "Feedback Count",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 42},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"monitoring-assistant\", job=\"audit\"} | json | event=\"user_feedback\"[$__range]))",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "type": "stat",
+      "title": "Avg Feedback Rating",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 42},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "avg_over_time({app=\"monitoring-assistant\", job=\"audit\"} | json | event=\"user_feedback\" | regexp \".*\\\\\\\"rating\\\\\\\":(?P<rating>\\\\d+).*\" | unwrap rating [$__range])",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "type": "logs",
+      "title": "User Feedback",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 42},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"monitoring-assistant\", job=\"audit\"} | json | event=\"user_feedback\" | line_format \"Feedback: {{ .request }}\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "dedupStrategy": "none",
+        "showCommonLabels": false,
+        "prettifyLogMessage": false
+      }
     }
   ],
   "refresh": "30s",

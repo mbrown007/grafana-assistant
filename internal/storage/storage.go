@@ -35,6 +35,18 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Feedback represents user feedback on an assistant message.
+type Feedback struct {
+	ID        string    `json:"id"`
+	SessionID string    `json:"session_id"`
+	MessageID string    `json:"message_id"`
+	UserID    int64     `json:"user_id"`
+	OrgID     int64     `json:"org_id"`
+	Rating    int       `json:"rating"`
+	Comment   string    `json:"comment,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // AuditEntry represents an audit log entry for chat activity.
 type AuditEntry struct {
 	ID          string    `json:"id"`
@@ -62,6 +74,9 @@ type Store interface {
 	// Messages
 	AddMessage(ctx context.Context, msg *Message) error
 	GetMessages(ctx context.Context, sessionID string) ([]Message, error)
+
+	// Feedback
+	AddFeedback(ctx context.Context, feedback *Feedback) error
 
 	// Audit log
 	AddAuditEntry(ctx context.Context, entry *AuditEntry) error

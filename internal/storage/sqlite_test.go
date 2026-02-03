@@ -239,3 +239,41 @@ func TestAuditLogInsert(t *testing.T) {
 		t.Fatalf("audit count = %d, want 1", count)
 	}
 }
+
+func TestFeedbackInsert(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	sess := &Session{
+		ID: "sess-1", UserID: 1, OrgID: 1,
+		DashboardUID: "dash-1",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := db.CreateSession(ctx, sess); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	entry := &Feedback{
+		ID:        "feedback-1",
+		SessionID: "sess-1",
+		MessageID: "sess-1-123-assistant",
+		UserID:    1,
+		OrgID:     1,
+		Rating:    4,
+		Comment:   "Helpful",
+		CreatedAt: now,
+	}
+	if err := db.AddFeedback(ctx, entry); err != nil {
+		t.Fatalf("AddFeedback: %v", err)
+	}
+
+	var count int
+	row := db.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_feedback WHERE session_id = ?`, "sess-1")
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("scan feedback count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("feedback count = %d, want 1", count)
+	}
+}

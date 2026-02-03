@@ -29,14 +29,46 @@ export interface ChatResponse {
   session_id: string;
 }
 
+export interface FeedbackRequest {
+  session_id: string;
+  message_id: string;
+  rating: number;
+  comment?: string;
+}
+
+export interface EvidenceResult {
+  id?: string;
+  path?: string;
+  title?: string;
+  excerpt?: string;
+  score?: number;
+  source?: string;
+}
+
+export interface KBSearchEvidence {
+  query: string;
+  results: EvidenceResult[];
+}
+
+export interface VectorSearchEvidence {
+  query: string;
+  results: EvidenceResult[];
+}
+
+export interface EvidencePayload {
+  kb_search?: KBSearchEvidence;
+  vector_search?: VectorSearchEvidence;
+}
+
 export interface StreamChunk {
-  type: 'start' | 'token' | 'tool' | 'error' | 'complete' | 'done';
+  type: 'start' | 'token' | 'tool' | 'error' | 'complete' | 'done' | 'evidence';
   message?: string;
   session_id?: string;
   tool?: string;
   tool_id?: string;
   arguments?: Record<string, unknown>;
   result?: unknown;
+  evidence?: EvidencePayload;
 }
 
 export interface ToolCall {
@@ -53,6 +85,7 @@ export interface Message {
   timestamp: string;
   isStreaming?: boolean;
   toolCalls?: ToolCall[];
+  evidence?: EvidencePayload;
 }
 
 export interface HistorySession {

@@ -1,4 +1,4 @@
-import type { ChatRequest, CurrentUser, HistoryDetail, HistorySession, StreamChunk } from '../types';
+import type { ChatRequest, CurrentUser, FeedbackRequest, HistoryDetail, HistorySession, StreamChunk } from '../types';
 import { withBasePath } from '../utils/basePath';
 
 async function* streamResponse(response: Response): AsyncGenerator<StreamChunk> {
@@ -108,5 +108,22 @@ export const userApi = {
       throw new Error(message || 'Unexpected response while checking Grafana login.');
     }
     return (await response.json()) as CurrentUser;
+  },
+};
+
+export const feedbackApi = {
+  async submit(payload: FeedbackRequest): Promise<void> {
+    const response = await fetch(withBasePath('/api/feedback'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed (${response.status})`);
+    }
   },
 };

@@ -96,6 +96,20 @@ func (s *SQLite) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_audit_session ON audit_log(session_id, created_at);
 	CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, org_id, created_at);
 
+	CREATE TABLE IF NOT EXISTS user_feedback (
+		id          TEXT PRIMARY KEY,
+		session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		message_id  TEXT NOT NULL,
+		user_id     INTEGER NOT NULL,
+		org_id      INTEGER NOT NULL,
+		rating      INTEGER NOT NULL,
+		comment     TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_feedback_session ON user_feedback(session_id, created_at);
+	CREATE INDEX IF NOT EXISTS idx_feedback_user ON user_feedback(user_id, org_id, created_at);
+
 	PRAGMA foreign_keys = ON;
 	`
 	if _, err := s.db.Exec(tables); err != nil {
@@ -256,6 +270,17 @@ func (s *SQLite) AddMessage(ctx context.Context, msg *Message) error {
 	_, err = s.db.ExecContext(ctx,
 		`UPDATE sessions SET updated_at = ? WHERE id = ?`,
 		msg.CreatedAt.Format(time.RFC3339), msg.SessionID,
+	)
+	return err
+}
+
+// AddFeedback inserts a user feedback entry.
+func (s *SQLite) AddFeedback(ctx context.Context, feedback *Feedback) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO user_feedback (id, session_id, message_id, user_id, org_id, rating, comment, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		feedback.ID, feedback.SessionID, feedback.MessageID, feedback.UserID, feedback.OrgID,
+		feedback.Rating, feedback.Comment, feedback.CreatedAt.Format(time.RFC3339),
 	)
 	return err
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/marcusz/monitoring-assistant/internal/api"
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
+	"github.com/marcusz/monitoring-assistant/pkg/kb"
 )
 
 func TestBuildKBContextPrefersDashboard(t *testing.T) {
@@ -36,8 +37,50 @@ genesyscloud_edge_cpu_percent reports CPU usage.
 		},
 	}
 
-	ctx := mgr.buildKBContext("what am I looking at", dash, &api.DashboardContext{})
+	ctx, _, _ := mgr.buildKBContext("what am I looking at", dash, &api.DashboardContext{})
 	if !strings.Contains(strings.ToLower(ctx), "edge collector") {
 		t.Fatalf("expected edge collector context, got: %s", ctx)
+	}
+}
+
+func TestBuildKBEvidenceSplitsSourcesAndTruncates(t *testing.T) {
+	results := []kb.UnifiedResult{
+		{
+			ID:      "doc1::Overview",
+			Title:   "Overview",
+			Content: strings.Repeat("a", 50),
+			Path:    "docs/overview.md",
+			Score:   0.9,
+			Source:  "token",
+		},
+		{
+			ID:      "doc2::Vector",
+			Title:   "Vector",
+			Content: strings.Repeat("b", 50),
+			Path:    "docs/vector.md",
+			Score:   0.8,
+			Source:  "vector",
+		},
+	}
+
+	kbEvidence, vectorEvidence := buildKBEvidence(results, 20)
+	if kbEvidence == nil || vectorEvidence == nil {
+		t.Fatalf("expected both KB and vector evidence, got kb=%v vector=%v", kbEvidence, vectorEvidence)
+	}
+
+	if len(kbEvidence.Results) != 1 {
+		t.Fatalf("expected 1 KB result, got %d", len(kbEvidence.Results))
+	}
+	if len(vectorEvidence.Results) != 1 {
+		t.Fatalf("expected 1 vector result, got %d", len(vectorEvidence.Results))
+	}
+
+	kbExcerpt := kbEvidence.Results[0].Excerpt
+	if !strings.HasSuffix(kbExcerpt, "...") {
+		t.Fatalf("expected KB excerpt to be truncated, got %q", kbExcerpt)
+	}
+	vectorExcerpt := vectorEvidence.Results[0].Excerpt
+	if !strings.HasSuffix(vectorExcerpt, "...") {
+		t.Fatalf("expected vector excerpt to be truncated, got %q", vectorExcerpt)
 	}
 }

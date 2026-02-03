@@ -236,7 +236,22 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 
 	// 4. Add user message (sanitize control characters).
 	cleanMessage := sanitizeInput(req.Message)
-	kbContext := m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext)
+	kbContext, kbEvidence, vectorEvidence := m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext)
+	if kbEvidence != nil || vectorEvidence != nil {
+		if kbEvidence != nil {
+			kbEvidence.Query = req.Message
+		}
+		if vectorEvidence != nil {
+			vectorEvidence.Query = req.Message
+		}
+		streamFn(api.StreamChunk{
+			Type: "evidence",
+			Evidence: &api.EvidencePayload{
+				KBSearch:     kbEvidence,
+				VectorSearch: vectorEvidence,
+			},
+		})
+	}
 	if kbContext != "" {
 		cleanMessage = cleanMessage + "\n\n[KB Context]\n" + kbContext
 	}

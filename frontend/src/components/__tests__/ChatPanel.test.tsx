@@ -14,6 +14,9 @@ vi.mock('../../services/api', () => ({
       yield { type: 'done' };
     }),
   },
+  feedbackApi: {
+    submit: vi.fn().mockResolvedValue(undefined),
+  },
   historyApi: {
     list: vi.fn().mockResolvedValue([]),
     get: vi.fn(),
@@ -130,5 +133,101 @@ describe('ChatPanel', () => {
       expect(onNavigate).toHaveBeenCalledWith('/grafana/d/dash-1');
     });
     expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows evidence chips and opens modal', async () => {
+    const { chatApi } = await import('../../services/api');
+    vi.mocked(chatApi.stream).mockImplementationOnce(async function* () {
+      yield { type: 'start', session_id: 'test-session' };
+      yield {
+        type: 'tool',
+        tool: 'grafana__query_prometheus',
+        tool_id: 'tool-1',
+        arguments: { query: 'up' },
+        result: { data: [] },
+      };
+      yield {
+        type: 'evidence',
+        evidence: {
+          kb_search: {
+            query: 'what is this',
+            results: [{ path: 'docs/overview.md', excerpt: 'overview excerpt', score: 0.9 }],
+          },
+          vector_search: {
+            query: 'what is this',
+            results: [{ path: 'docs/vector.md', excerpt: 'vector excerpt', score: 0.8 }],
+          },
+        },
+      };
+      yield { type: 'complete', message: 'Done' };
+      yield { type: 'done' };
+    });
+
+    const { container } = renderWithTheme(<ChatPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
+    await userEvent.type(input, 'show evidence');
+    const submit = container.querySelector('form button[type="submit"]');
+    expect(submit).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(submit as HTMLButtonElement);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
+      expect(screen.getByText('KB search')).toBeInTheDocument();
+      expect(screen.getByText('Vector search')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'KB search' }));
+    await waitFor(() => {
+      expect(screen.getByText('overview excerpt')).toBeInTheDocument();
+    });
+  });
+
+  it('submits feedback for an assistant reply', async () => {
+    const { chatApi, feedbackApi } = await import('../../services/api');
+    vi.mocked(chatApi.stream).mockImplementationOnce(async function* () {
+      yield { type: 'start', session_id: 'test-session' };
+      yield { type: 'complete', message: 'Done' };
+      yield { type: 'done' };
+    });
+
+    const { container } = renderWithTheme(<ChatPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
+    await userEvent.type(input, 'show feedback');
+    const submit = container.querySelector('form button[type="submit"]');
+    expect(submit).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(submit as HTMLButtonElement);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Feedback')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('Feedback'));
+    await userEvent.click(screen.getByLabelText('Rate 5 stars'));
+    await userEvent.type(screen.getByPlaceholderText('What was helpful or missing?'), 'Nice answer');
+    await userEvent.click(screen.getByText('Send feedback'));
+
+    await waitFor(() => {
+      expect(vi.mocked(feedbackApi.submit)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          session_id: 'test-session',
+          rating: 5,
+          comment: 'Nice answer',
+        })
+      );
+    });
   });
 });

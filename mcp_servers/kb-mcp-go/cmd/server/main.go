@@ -66,7 +66,8 @@ func runSSE(mcpServer *mcpserver.MCPServer, addr string) error {
 	log.Printf("Running server with SSE transport at %s", addr)
 	log.Printf("SSE endpoint: http://%s/sse", addr)
 
-	sseServer := server.NewSSEServer(mcpServer.GetServer(), "/sse")
+	// Use an empty base URL so the server returns relative /message endpoints.
+	sseServer := server.NewSSEServer(mcpServer.GetServer(), "")
 
 	go func() {
 		sigChan := make(chan os.Signal, 1)
