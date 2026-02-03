@@ -58,3 +58,7 @@ package-lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local assistant runtime artifacts
+.assistant.log
+.assistant.pid
