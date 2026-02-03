@@ -295,7 +295,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
               prev.map((msg) => (msg.id === assistantId ? { ...msg, toolCalls: [...toolCalls] } : msg))
             );
 
-            if (chunk.tool === 'scratchpad__upsert_panel' && chunk.result && onNavigate) {
+            if ((chunk.tool === 'scratchpad__upsert_panel' || chunk.tool === 'explore__open') && chunk.result && onNavigate) {
               const result = chunk.result as { url?: string };
               if (result.url && result.url !== lastNavigateRef.current) {
                 lastNavigateRef.current = result.url;

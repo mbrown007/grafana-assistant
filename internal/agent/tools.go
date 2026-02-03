@@ -67,6 +67,39 @@ func InternalTools() []openai.Tool {
 				}`),
 			},
 		},
+		{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        "explore__open",
+				Description: "Open Grafana Explore with one or more ad-hoc queries for visualization.",
+				Parameters: json.RawMessage(`{
+					"type": "object",
+					"properties": {
+						"query": {"type": "string", "description": "Convenience PromQL/LogQL query (single query)."},
+						"queries": {
+							"type": "array",
+							"description": "Explicit query objects for Explore.",
+							"items": {
+								"type": "object",
+								"properties": {
+									"refId": {"type": "string"},
+									"expr": {"type": "string"},
+									"range": {"type": "boolean"},
+									"instant": {"type": "boolean"},
+									"legendFormat": {"type": "string"},
+									"editorMode": {"type": "string"},
+									"datasource": {"type": "object"}
+								},
+								"required": ["expr"]
+							}
+						},
+						"datasource": {"type": "object", "description": "Grafana datasource object (uid/type)."},
+						"timeRange": {"type": "object", "description": "Optional time range override", "additionalProperties": {"type": "string"}},
+						"orgId": {"type": "integer"}
+					}
+				}`),
+			},
+		},
 	}
 }
 

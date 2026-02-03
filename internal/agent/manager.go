@@ -224,9 +224,9 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	if sess != nil {
 		now := time.Now()
 		promptMeta := map[string]any{
-			"prompt_length":          len(systemPrompt),
-			"has_dashboard_context":  dashCtx != nil,
-			"tool_count":             len(m.tools),
+			"prompt_length":         len(systemPrompt),
+			"has_dashboard_context": dashCtx != nil,
+			"tool_count":            len(m.tools),
 		}
 		if dashCtx != nil {
 			promptMeta["dashboard_title"] = dashCtx.Title
@@ -433,7 +433,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			)
 
 			// Execute tool.
-			result, err := m.handleInternalTool(ctx, tc.Function.Name, args, user, sess)
+			result, err := m.handleInternalTool(ctx, tc.Function.Name, args, user, sess, req.DashboardContext)
 			if err == nil && result == nil {
 				result, err = RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
 			}
@@ -599,49 +599,67 @@ func marshalAuditValue(value any) string {
 	}
 }
 
-func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[string]any, user *grafana.User, sess *storage.Session) (any, error) {
-	if name != "scratchpad__upsert_panel" {
-		return nil, nil
-	}
-	if m.scratchpads == nil {
-		return nil, fmt.Errorf("scratchpad manager not configured")
-	}
-	if user == nil || sess == nil {
-		return nil, fmt.Errorf("missing user/session context for scratchpad")
-	}
+func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[string]any, user *grafana.User, sess *storage.Session, reqCtx *api.DashboardContext) (any, error) {
+	switch name {
+	case "scratchpad__upsert_panel":
+		if m.scratchpads == nil {
+			return nil, fmt.Errorf("scratchpad manager not configured")
+		}
+		if user == nil || sess == nil {
+			return nil, fmt.Errorf("missing user/session context for scratchpad")
+		}
 
-	query, _ := args["query"].(string)
-	title, _ := args["title"].(string)
-	description, _ := args["description"].(string)
-	panelType, _ := args["panelType"].(string)
-	if query == "" || title == "" {
-		return nil, fmt.Errorf("query and title are required")
-	}
+		query, _ := args["query"].(string)
+		title, _ := args["title"].(string)
+		description, _ := args["description"].(string)
+		panelType, _ := args["panelType"].(string)
+		if query == "" || title == "" {
+			return nil, fmt.Errorf("query and title are required")
+		}
 
-	var datasource map[string]any
-	if raw, ok := args["datasource"].(map[string]any); ok {
-		datasource = raw
-	}
+		var datasource map[string]any
+		if raw, ok := args["datasource"].(map[string]any); ok {
+			datasource = raw
+		}
 
-	var timeRange map[string]string
-	if raw, ok := args["timeRange"].(map[string]any); ok {
-		timeRange = make(map[string]string)
-		for k, v := range raw {
-			if s, ok := v.(string); ok {
-				timeRange[k] = s
+		var timeRange map[string]string
+		if raw, ok := args["timeRange"].(map[string]any); ok {
+			timeRange = make(map[string]string)
+			for k, v := range raw {
+				if s, ok := v.(string); ok {
+					timeRange[k] = s
+				}
 			}
 		}
-	}
 
-	uid := sess.ScratchpadUID
-	panelID := 1
-	url := ""
-	if uid == "" {
-		var err error
-		uid, panelID, url, err = m.scratchpads.GetOrCreateScratchpad(ctx, user, sess.ID)
-		if err != nil {
+		uid := sess.ScratchpadUID
+		panelID := 1
+		url := ""
+		if uid == "" {
+			var err error
+			uid, panelID, url, err = m.scratchpads.GetOrCreateScratchpad(ctx, user, sess.ID)
+			if err != nil {
+				metrics.ErrorsTotalBySource.WithLabelValues("grafana_api").Inc()
+				slog.ErrorContext(ctx, "Failed to get or create scratchpad",
+					"event", "error",
+					"source", "grafana_api",
+					"session_id", sess.ID,
+					"user_id", user.ID,
+					"org_id", user.OrgID,
+					"error", err,
+				)
+				return nil, err
+			}
+			if err := m.store.UpdateSessionScratchpad(ctx, sess.ID, uid, time.Now()); err != nil {
+				slog.WarnContext(ctx, "failed to persist scratchpad uid", "error", err)
+			} else {
+				sess.ScratchpadUID = uid
+			}
+		}
+
+		if err := m.scratchpads.UpdatePanel(ctx, uid, panelID, query, title, description, panelType, datasource, timeRange); err != nil {
 			metrics.ErrorsTotalBySource.WithLabelValues("grafana_api").Inc()
-			slog.ErrorContext(ctx, "Failed to get or create scratchpad",
+			slog.ErrorContext(ctx, "Failed to update scratchpad panel",
 				"event", "error",
 				"source", "grafana_api",
 				"session_id", sess.ID,
@@ -651,32 +669,22 @@ func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[
 			)
 			return nil, err
 		}
-		if err := m.store.UpdateSessionScratchpad(ctx, sess.ID, uid, time.Now()); err != nil {
-			slog.WarnContext(ctx, "failed to persist scratchpad uid", "error", err)
-		} else {
-			sess.ScratchpadUID = uid
+		if url == "" {
+			url = "/grafana/d/" + uid
 		}
-	}
 
-	if err := m.scratchpads.UpdatePanel(ctx, uid, panelID, query, title, description, panelType, datasource, timeRange); err != nil {
-		metrics.ErrorsTotalBySource.WithLabelValues("grafana_api").Inc()
-		slog.ErrorContext(ctx, "Failed to update scratchpad panel",
-			"event", "error",
-			"source", "grafana_api",
-			"session_id", sess.ID,
-			"user_id", user.ID,
-			"org_id", user.OrgID,
-			"error", err,
-		)
-		return nil, err
+		return map[string]any{
+			"dashboardUid": uid,
+			"panelId":      panelID,
+			"url":          url,
+		}, nil
+	case "explore__open":
+		url, err := buildExploreURL(args, reqCtx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"url": url}, nil
+	default:
+		return nil, nil
 	}
-	if url == "" {
-		url = "/grafana/d/" + uid
-	}
-
-	return map[string]any{
-		"dashboardUid": uid,
-		"panelId":      panelID,
-		"url":          url,
-	}, nil
 }
