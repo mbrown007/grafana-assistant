@@ -41,6 +41,9 @@ type Manager struct {
 	kbOnce            sync.Once
 	kbIndex           *kb.Index
 	kbErr             error
+	kbPlatformOnce    sync.Once
+	kbPlatformIndex   *kb.Index
+	kbPlatformErr     error
 
 	// Hybrid KB: vector search fields.
 	kbStructuredPath   string
@@ -154,6 +157,8 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	var sess *storage.Session
+	isNewSession := false
+	prevDashboardUID := ""
 	if sessionID != "" {
 		existing, err := m.store.GetSession(ctx, sessionID)
 		if err != nil {
@@ -165,6 +170,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				return
 			}
 			sess = existing
+			prevDashboardUID = existing.DashboardUID
 		}
 	}
 
@@ -184,6 +190,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		if err := m.store.CreateSession(ctx, sess); err != nil {
 			slog.ErrorContext(ctx, "failed to create session", "error", err)
 		}
+		isNewSession = true
 	} else {
 		// Refresh session metadata if needed.
 		if sess.Title == "" || (dashboardUID != "" && sess.DashboardUID != dashboardUID) {
@@ -204,6 +211,9 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to load messages", "error", err)
 		} else {
+			if len(msgs) == 0 {
+				isNewSession = true
+			}
 			mem.LoadHistory(msgs)
 		}
 	}
@@ -236,21 +246,28 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 
 	// 4. Add user message (sanitize control characters).
 	cleanMessage := sanitizeInput(req.Message)
-	kbContext, kbEvidence, vectorEvidence := m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext)
-	if kbEvidence != nil || vectorEvidence != nil {
-		if kbEvidence != nil {
-			kbEvidence.Query = req.Message
+	dashboardChanged := req.DashboardContext != nil && req.DashboardContext.UID != "" && req.DashboardContext.UID != prevDashboardUID
+	shouldInjectKB := isNewSession || dashboardChanged
+	var kbContext string
+	var kbEvidence *api.KBSearchEvidence
+	var vectorEvidence *api.VectorSearchEvidence
+	if shouldInjectKB {
+		kbContext, kbEvidence, vectorEvidence = m.buildKBContext(cleanMessage, dashCtx, req.DashboardContext, true)
+		if kbEvidence != nil || vectorEvidence != nil {
+			if kbEvidence != nil {
+				kbEvidence.Query = req.Message
+			}
+			if vectorEvidence != nil {
+				vectorEvidence.Query = req.Message
+			}
+			streamFn(api.StreamChunk{
+				Type: "evidence",
+				Evidence: &api.EvidencePayload{
+					KBSearch:     kbEvidence,
+					VectorSearch: vectorEvidence,
+				},
+			})
 		}
-		if vectorEvidence != nil {
-			vectorEvidence.Query = req.Message
-		}
-		streamFn(api.StreamChunk{
-			Type: "evidence",
-			Evidence: &api.EvidencePayload{
-				KBSearch:     kbEvidence,
-				VectorSearch: vectorEvidence,
-			},
-		})
 	}
 	if kbContext != "" {
 		cleanMessage = cleanMessage + "\n\n[KB Context]\n" + kbContext

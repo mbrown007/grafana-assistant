@@ -37,7 +37,7 @@ genesyscloud_edge_cpu_percent reports CPU usage.
 		},
 	}
 
-	ctx, _, _ := mgr.buildKBContext("what am I looking at", dash, &api.DashboardContext{})
+	ctx, _, _ := mgr.buildKBContext("what am I looking at", dash, &api.DashboardContext{}, false)
 	if !strings.Contains(strings.ToLower(ctx), "edge collector") {
 		t.Fatalf("expected edge collector context, got: %s", ctx)
 	}
@@ -82,5 +82,30 @@ func TestBuildKBEvidenceSplitsSourcesAndTruncates(t *testing.T) {
 	vectorExcerpt := vectorEvidence.Results[0].Excerpt
 	if !strings.HasSuffix(vectorExcerpt, "...") {
 		t.Fatalf("expected vector excerpt to be truncated, got %q", vectorExcerpt)
+	}
+}
+
+func TestBuildKBContextPrefersDashboardMap(t *testing.T) {
+	dir := t.TempDir()
+	content := `# Monitoring Assistant Observability
+
+## Overview
+This dashboard tracks chat volume and audit logs.
+`
+	platformDir := filepath.Join(dir, "platform", "Monitoring_Assistant")
+	if err := os.MkdirAll(platformDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(platformDir, "monitoring_assistant_observability_dashboard.md")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	mgr := NewManager(nil, nil, nil, nil, nil, ManagerConfig{KBPath: dir, KBMaxSections: 2, KBMaxSectionChars: 500})
+	reqCtx := &api.DashboardContext{Name: "Monitoring Assistant Observability"}
+
+	ctx, _, _ := mgr.buildKBContext("what is this dashboard", nil, reqCtx, true)
+	if !strings.Contains(strings.ToLower(ctx), "chat volume") {
+		t.Fatalf("expected mapped dashboard context, got: %s", ctx)
 	}
 }
