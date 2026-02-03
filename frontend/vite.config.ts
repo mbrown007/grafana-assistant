@@ -5,8 +5,10 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8081';
+  const isProd = mode === 'production';
 
   return {
+    base: isProd ? './' : '/',
     plugins: [react()],
     resolve: {
       alias: {

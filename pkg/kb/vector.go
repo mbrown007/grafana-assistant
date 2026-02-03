@@ -1,11 +1,14 @@
 package kb
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 
 	_ "modernc.org/sqlite"
@@ -184,4 +187,61 @@ func decodeEmbedding(data []byte) []float32 {
 func ContentHash(content string) string {
 	h := sha256.Sum256([]byte(content))
 	return fmt.Sprintf("%x", h)
+}
+
+// JSONLChunk matches the scraper's output format.
+type JSONLChunk struct {
+	ID       string `json:"id"`
+	Text     string `json:"text"`
+	Metadata struct {
+		Source      string `json:"source"`
+		URL         string `json:"url"`
+		Title       string `json:"title"`
+		SectionPath string `json:"section_path"`
+	} `json:"metadata"`
+}
+
+// LoadJSONLChunks reads a JSONL file and returns VectorSections (without embeddings).
+func LoadJSONLChunks(path string) ([]VectorSection, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open JSONL file: %w", err)
+	}
+	defer f.Close()
+
+	var sections []VectorSection
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var chunk JSONLChunk
+		if err := json.Unmarshal(line, &chunk); err != nil {
+			continue
+		}
+		if chunk.Text == "" {
+			continue
+		}
+
+		title := chunk.Metadata.Title
+		if chunk.Metadata.SectionPath != "" {
+			title = chunk.Metadata.SectionPath
+		}
+
+		sections = append(sections, VectorSection{
+			ID:          chunk.ID,
+			Title:       title,
+			Content:     chunk.Text,
+			Path:        chunk.Metadata.URL,
+			ContentHash: ContentHash(chunk.Text),
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read JSONL file: %w", err)
+	}
+	return sections, nil
 }

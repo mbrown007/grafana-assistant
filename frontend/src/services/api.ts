@@ -1,4 +1,5 @@
 import type { ChatRequest, CurrentUser, HistoryDetail, HistorySession, StreamChunk } from '../types';
+import { withBasePath } from '../utils/basePath';
 
 async function* streamResponse(response: Response): AsyncGenerator<StreamChunk> {
   if (!response.body) {
@@ -47,7 +48,7 @@ async function* streamResponse(response: Response): AsyncGenerator<StreamChunk> 
 
 export const chatApi = {
   async *stream(payload: ChatRequest): AsyncGenerator<StreamChunk> {
-    const response = await fetch('/api/chat', {
+    const response = await fetch(withBasePath('/api/chat'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -67,7 +68,7 @@ export const chatApi = {
 
 export const historyApi = {
   async list(): Promise<HistorySession[]> {
-    const response = await fetch('/api/history');
+    const response = await fetch(withBasePath('/api/history'));
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || `Request failed (${response.status})`);
@@ -75,7 +76,7 @@ export const historyApi = {
     return (await response.json()) as HistorySession[];
   },
   async get(id: string): Promise<HistoryDetail> {
-    const response = await fetch(`/api/history/${id}`);
+    const response = await fetch(withBasePath(`/api/history/${id}`));
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || `Request failed (${response.status})`);
@@ -83,7 +84,7 @@ export const historyApi = {
     return (await response.json()) as HistoryDetail;
   },
   async remove(id: string): Promise<void> {
-    const response = await fetch(`/api/history/${id}`, {
+    const response = await fetch(withBasePath(`/api/history/${id}`), {
       method: 'DELETE',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     });
@@ -96,7 +97,7 @@ export const historyApi = {
 
 export const userApi = {
   async get(): Promise<CurrentUser> {
-    const response = await fetch('/api/me');
+    const response = await fetch(withBasePath('/api/me'));
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || `Request failed (${response.status})`);

@@ -1,7 +1,7 @@
 # Monitoring Assistant configuration
 # Environment variable overrides: ASSISTANT_LISTEN_ADDR, ASSISTANT_GRAFANA_URL,
 # ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS, ASSISTANT_DB_PATH,
-# ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL
+# ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL, ASSISTANT_BASE_PATH
 #
 # Secrets can also be placed in a .env file (auto-loaded from working directory).
 
@@ -30,6 +30,10 @@ db_path: "data/assistant.db"
 # Set to empty string to disable file auditing.
 audit_log_path: "/var/log/grafana-assistant/audit.log"
 
+# Base path to serve the UI/API under (empty = root).
+# Example: "/assistant"
+# base_path: "/assistant"
+
 # OpenAI API key (required for chat assistant)
 # openai_api_key: "sk-..."
 
@@ -40,6 +44,13 @@ openai_model: "gpt-4o"
 # kb_path: "KB"
 # kb_max_sections: 2          # Max KB sections to inject per request
 # kb_max_section_chars: 2000  # Max chars per KB section
+
+# Hybrid KB: structured (token) and vector (embedding) search
+# kb_structured_path: "KB/runbooks"           # Token index source
+# kb_vector_path: ""                           # Markdown files for vector index (empty = disabled)
+# kb_vector_db_path: "KB/.kb_vectors.db"      # SQLite vector store
+# kb_embedding_model: "text-embedding-3-small" # OpenAI embedding model
+# kb_vector_max_results: 2                     # Max vector results per query
 
 # Prometheus metrics (default: true)
 metrics_enabled: true

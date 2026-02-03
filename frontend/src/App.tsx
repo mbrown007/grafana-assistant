@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatPanel } from './components/ChatPanel';
 import type { DashboardContext } from './types';
 import { parseDashboardUrl, parseExploreUrl } from './utils/dashboard';
+import { getBasePath, withBasePath } from './utils/basePath';
 import chatLauncher from './assets/chat_with_agent.png';
 
-const GRAFANA_PATH = '/grafana/';
+const GRAFANA_PATH = withBasePath('/grafana/');
 const CONTEXT_POLL_INTERVAL_MS = 2500;
 
 interface DashboardSummaryResponse {
@@ -25,7 +26,16 @@ export function App() {
     if (!iframe || !url) {
       return;
     }
-    const nextUrl = url.startsWith('/grafana/') ? url : `/grafana/${url.replace(/^\/+/, '')}`;
+    const basePath = getBasePath();
+    const grafanaBase = withBasePath('/grafana/');
+    let nextUrl = url;
+    if (basePath && nextUrl.startsWith(basePath + '/grafana/')) {
+      // Already includes the base path.
+    } else if (nextUrl.startsWith('/grafana/')) {
+      nextUrl = withBasePath(nextUrl);
+    } else {
+      nextUrl = `${grafanaBase}${url.replace(/^\/+/, '')}`;
+    }
     const resolved = new URL(nextUrl, window.location.href).href;
     if (iframe.src === resolved) {
       return;
@@ -40,7 +50,7 @@ export function App() {
       if (parsedDashboard) {
         let summary: DashboardSummaryResponse | null = null;
         try {
-          const response = await fetch(`/api/dashboard-context/${parsedDashboard.uid}`);
+          const response = await fetch(withBasePath(`/api/dashboard-context/${parsedDashboard.uid}`));
           if (response.ok) {
             summary = (await response.json()) as DashboardSummaryResponse;
           }

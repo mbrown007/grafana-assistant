@@ -31,6 +31,7 @@ type Config struct {
 	ScratchpadTTLDays int    `yaml:"scratchpad_ttl_days"`
 	ScratchpadFolder  string `yaml:"scratchpad_folder"`
 	AuditLogPath      string `yaml:"audit_log_path"`
+	BasePath          string `yaml:"base_path"`
 
 	// Database path for SQLite (default: data/assistant.db).
 	DBPath string `yaml:"db_path"`
@@ -165,6 +166,9 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("ASSISTANT_AUDIT_LOG_PATH"); v != "" {
 		cfg.AuditLogPath = v
 	}
+	if v := os.Getenv("ASSISTANT_BASE_PATH"); v != "" {
+		cfg.BasePath = v
+	}
 	if v := os.Getenv("ASSISTANT_OPENAI_API_KEY"); v != "" {
 		cfg.OpenAIAPIKey = v
 	}
@@ -208,6 +212,9 @@ func Load(path string) (*Config, error) {
 		cfg.KBVectorMaxResults = n
 	}
 
+	if err := cfg.Normalize(); err != nil {
+		return nil, fmt.Errorf("config normalization: %w", err)
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
@@ -216,6 +223,33 @@ func Load(path string) (*Config, error) {
 	checkFilePermissions(".env")
 
 	return cfg, nil
+}
+
+func (c *Config) Normalize() error {
+	base, err := normalizeBasePath(c.BasePath)
+	if err != nil {
+		return err
+	}
+	c.BasePath = base
+	return nil
+}
+
+func normalizeBasePath(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "/" {
+		return "", nil
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+	trimmed = strings.TrimRight(trimmed, "/")
+	if trimmed == "" || trimmed == "." {
+		return "", nil
+	}
+	if strings.Contains(trimmed, " ") {
+		return "", errors.New("base_path cannot contain spaces")
+	}
+	return trimmed, nil
 }
 
 func (c *Config) Validate() error {

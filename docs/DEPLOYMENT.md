@@ -48,6 +48,7 @@ Copy `config.example.yaml` to `/etc/monitoring-assistant/config.yaml` and adjust
 - `data_retention_days`
 - `openai_api_key` / `openai_model`
 - `mcp_servers`
+- `base_path` (if serving under a sub-path like `/assistant`)
 - `kb_path` (if your KB is not in the working directory)
 - `kb_max_sections` / `kb_max_section_chars` (if you want to tune KB context size)
 

@@ -32,7 +32,7 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
 
-func spaHandler() (http.Handler, error) {
+func spaHandler(basePath string) (http.Handler, error) {
 	sub, err := fs.Sub(frontend.DistFS, "dist")
 	if err != nil {
 		return nil, err
@@ -47,6 +47,15 @@ func spaHandler() (http.Handler, error) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.NotFound(w, r)
+			return
+		}
+
+		if r.URL.Path == "/config.js" {
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			js := "window.__ASSISTANT_BASE_PATH__ = " + strconv.Quote(basePath) + ";\n"
+			w.Write([]byte(js))
 			return
 		}
 
@@ -195,6 +204,7 @@ func main() {
 		"grafana_url", cfg.GrafanaURL,
 		"db_path", cfg.DBPath,
 		"data_retention_days", cfg.DataRetentionDays,
+		"base_path", cfg.BasePath,
 	)
 
 	// Ensure database directory exists.
@@ -290,22 +300,22 @@ func main() {
 		}
 	}
 
-	mux := http.NewServeMux()
+	appMux := http.NewServeMux()
 
 	// Health endpoint
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	appMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	// Prometheus metrics endpoint.
 	if cfg.MetricsEnabled {
-		mux.Handle("GET /metrics", metrics.Handler())
+		appMux.Handle("GET /metrics", metrics.Handler())
 		slog.Info("metrics endpoint registered")
 	}
 
 	// Dashboard context API
-	mux.HandleFunc("GET /api/dashboard-context/{uid}", func(w http.ResponseWriter, r *http.Request) {
+	appMux.HandleFunc("GET /api/dashboard-context/{uid}", func(w http.ResponseWriter, r *http.Request) {
 		uid := r.PathValue("uid")
 		summary, err := enricher.GetDashboardSummary(r.Context(), uid)
 		if err != nil {
@@ -321,7 +331,7 @@ func main() {
 
 	// Chat API (SSE streaming)
 	if llmClient != nil {
-		mux.HandleFunc("POST /api/chat", api.AuthenticatedChatHandlerWithLimit(
+		appMux.HandleFunc("POST /api/chat", api.AuthenticatedChatHandlerWithLimit(
 			sessionResolver,
 			func(r *http.Request, user *grafana.User, req api.ChatRequest, streamFn func(api.StreamChunk)) {
 				agentMgr.HandleChat(r.Context(), user, req, streamFn)
@@ -330,16 +340,16 @@ func main() {
 		))
 		slog.Info("chat endpoint registered")
 	} else {
-		mux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
+		appMux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "chat not available: OpenAI API key not configured", http.StatusServiceUnavailable)
 		})
 	}
 
 	// History API (user-scoped)
-	mux.HandleFunc("GET /api/history", api.HistoryListHandler(store, sessionResolver))
-	mux.HandleFunc("GET /api/history/{id}", api.HistoryDetailHandler(store, sessionResolver))
-	mux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
-	mux.HandleFunc("GET /api/me", api.CurrentUserHandler(sessionResolver))
+	appMux.HandleFunc("GET /api/history", api.HistoryListHandler(store, sessionResolver))
+	appMux.HandleFunc("GET /api/history/{id}", api.HistoryDetailHandler(store, sessionResolver))
+	appMux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
+	appMux.HandleFunc("GET /api/me", api.CurrentUserHandler(sessionResolver))
 
 	// Grafana reverse proxy
 	grafanaHandler, err := proxy.GrafanaHandler(cfg.GrafanaURL)
@@ -347,15 +357,26 @@ func main() {
 		slog.Error("failed to create grafana proxy", "error", err)
 		os.Exit(1)
 	}
-	mux.Handle("/grafana/", grafanaHandler)
+	appMux.Handle("/grafana/", grafanaHandler)
 
 	// Serve embedded frontend (SPA fallback).
-	spa, err := spaHandler()
+	spa, err := spaHandler(cfg.BasePath)
 	if err != nil {
 		slog.Error("failed to load frontend assets", "error", err)
 		os.Exit(1)
 	}
-	mux.Handle("/", spa)
+	appMux.Handle("/", spa)
+
+	var mux http.Handler = appMux
+	if cfg.BasePath != "" {
+		rootMux := http.NewServeMux()
+		basePrefix := cfg.BasePath
+		rootMux.Handle(basePrefix+"/", http.StripPrefix(basePrefix, appMux))
+		rootMux.HandleFunc(basePrefix, func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, basePrefix+"/", http.StatusPermanentRedirect)
+		})
+		mux = rootMux
+	}
 
 	// Derive CORS allowed origin.
 	allowedOrigin := cfg.AllowedOrigin

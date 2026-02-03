@@ -6,11 +6,14 @@ BIN := bin/assistant
 build: ## Build the Go binary
 	go build -o $(BIN) ./cmd/assistant
 
-kb-reindex: ## Rebuild KB indexes (token + vector)
+kb-reindex: ## Rebuild KB indexes (token + vector from markdown)
 	go run ./cmd/kb-reindex -structured-path KB/runbooks -vector-path KB/platform
 
 kb-reindex-token: ## Rebuild token index only (no API key needed)
 	go run ./cmd/kb-reindex -structured-path KB/runbooks
+
+kb-reindex-jsonl: ## Rebuild vector index from scraper JSONL
+	go run ./cmd/kb-reindex -structured-path KB/runbooks -vector-jsonl docs-scraper/genesys_chunks.jsonl
 
 run: build ## Build and run (foreground)
 	./$(BIN) -config config.yaml

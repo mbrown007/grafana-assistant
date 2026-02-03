@@ -2,6 +2,7 @@ package kb
 
 import (
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -141,5 +142,47 @@ func TestContentHash(t *testing.T) {
 	}
 	if h1 == h3 {
 		t.Fatal("different content should produce different hash")
+	}
+}
+
+func TestLoadJSONLChunks(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "chunks.jsonl")
+
+	content := `{"id":"abc123","text":"## Overview\nGenesys Cloud is a CCaaS platform.","metadata":{"source":"GenesysCloud","url":"https://docs.example.com/overview","title":"Overview Page","section_path":"Overview Page > Overview"}}
+{"id":"def456","text":"## Edge Servers\nEdge servers provide local PSTN connectivity.","metadata":{"source":"GenesysCloud","url":"https://docs.example.com/edge","title":"Edge Page","section_path":""}}
+{"id":"empty","text":"","metadata":{"source":"GenesysCloud","url":"https://docs.example.com/empty","title":"Empty","section_path":""}}
+`
+	if err := os.WriteFile(jsonl, []byte(content), 0o600); err != nil {
+		t.Fatalf("write JSONL: %v", err)
+	}
+
+	sections, err := LoadJSONLChunks(jsonl)
+	if err != nil {
+		t.Fatalf("LoadJSONLChunks: %v", err)
+	}
+
+	// Empty text chunk should be skipped.
+	if len(sections) != 2 {
+		t.Fatalf("expected 2 sections, got %d", len(sections))
+	}
+
+	// First chunk uses section_path as title.
+	if sections[0].ID != "abc123" {
+		t.Fatalf("expected id abc123, got %s", sections[0].ID)
+	}
+	if sections[0].Title != "Overview Page > Overview" {
+		t.Fatalf("expected section_path title, got %q", sections[0].Title)
+	}
+	if sections[0].Path != "https://docs.example.com/overview" {
+		t.Fatalf("expected URL as path, got %q", sections[0].Path)
+	}
+	if sections[0].ContentHash == "" {
+		t.Fatal("expected non-empty content hash")
+	}
+
+	// Second chunk has empty section_path, falls back to title.
+	if sections[1].Title != "Edge Page" {
+		t.Fatalf("expected title fallback, got %q", sections[1].Title)
 	}
 }

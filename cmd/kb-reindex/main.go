@@ -16,13 +16,15 @@ func main() {
 		structuredPath string
 		outPath        string
 		vectorPath     string
+		vectorJSONL    string
 		vectorDBPath   string
 		embeddingModel string
 		apiKey         string
 	)
 	flag.StringVar(&structuredPath, "structured-path", "KB/runbooks", "Path to structured KB folder (token index)")
 	flag.StringVar(&outPath, "out", "", "Output token index path (default: <structured-path>/.kb_index.json)")
-	flag.StringVar(&vectorPath, "vector-path", "", "Path to vector KB folder (empty = skip vector indexing)")
+	flag.StringVar(&vectorPath, "vector-path", "", "Path to vector KB folder of .md files (empty = skip)")
+	flag.StringVar(&vectorJSONL, "vector-jsonl", "", "Path to JSONL file from docs scraper (alternative to -vector-path)")
 	flag.StringVar(&vectorDBPath, "vector-db", "KB/.kb_vectors.db", "Path to vector SQLite database")
 	flag.StringVar(&embeddingModel, "embedding-model", "text-embedding-3-small", "OpenAI embedding model")
 	flag.StringVar(&apiKey, "openai-api-key", "", "OpenAI API key (or set ASSISTANT_OPENAI_API_KEY)")
@@ -58,8 +60,8 @@ func main() {
 		_ = os.Chmod(outPath, 0o600)
 	}
 
-	// 2. Build vector index from vector path (if configured).
-	if vectorPath == "" {
+	// 2. Build vector index (from markdown dir or JSONL file).
+	if vectorPath == "" && vectorJSONL == "" {
 		return
 	}
 	if apiKey == "" {
@@ -67,13 +69,38 @@ func main() {
 		return
 	}
 
-	// Parse sections from the vector path using the same markdown parser.
-	idx, err := kb.BuildIndex(vectorPath)
-	if err != nil {
-		log.Fatalf("build vector sections: %v", err)
+	// Collect vector sections from the configured source.
+	var vectorSections []kb.VectorSection
+
+	switch {
+	case vectorJSONL != "":
+		// Load pre-chunked sections from scraper JSONL.
+		sections, err := kb.LoadJSONLChunks(vectorJSONL)
+		if err != nil {
+			log.Fatalf("load JSONL chunks: %v", err)
+		}
+		vectorSections = sections
+		fmt.Printf("Loaded %d chunks from %s\n", len(sections), vectorJSONL)
+
+	case vectorPath != "":
+		// Parse sections from markdown files.
+		idx, err := kb.BuildIndex(vectorPath)
+		if err != nil {
+			log.Fatalf("build vector sections: %v", err)
+		}
+		for _, sec := range idx.Sections {
+			vectorSections = append(vectorSections, kb.VectorSection{
+				ID:          sec.ID,
+				Title:       sec.Title,
+				Content:     sec.Content,
+				Path:        sec.Path,
+				ContentHash: kb.ContentHash(sec.Content),
+			})
+		}
 	}
-	if len(idx.Sections) == 0 {
-		fmt.Println("No sections found in vector path, skipping vector index")
+
+	if len(vectorSections) == 0 {
+		fmt.Println("No sections found for vector index, skipping")
 		return
 	}
 
@@ -84,21 +111,19 @@ func main() {
 	defer vi.Close()
 
 	embedder := kb.NewEmbedder(apiKey, embeddingModel)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	// Track current IDs for stale deletion.
-	currentIDs := make(map[string]struct{}, len(idx.Sections))
+	currentIDs := make(map[string]struct{}, len(vectorSections))
 
 	var embedded, skipped int
-	for _, sec := range idx.Sections {
+	for _, sec := range vectorSections {
 		currentIDs[sec.ID] = struct{}{}
-
-		hash := kb.ContentHash(sec.Content)
 
 		// Skip if content hasn't changed.
 		existing := vi.ContentHashForSection(sec.ID)
-		if existing == hash {
+		if existing == sec.ContentHash {
 			skipped++
 			continue
 		}
@@ -108,16 +133,9 @@ func main() {
 			log.Printf("WARNING: failed to embed section %q: %v", sec.ID, err)
 			continue
 		}
+		sec.Embedding = emb
 
-		err = vi.UpsertSection(kb.VectorSection{
-			ID:          sec.ID,
-			Title:       sec.Title,
-			Content:     sec.Content,
-			Path:        sec.Path,
-			Embedding:   emb,
-			ContentHash: hash,
-		})
-		if err != nil {
+		if err := vi.UpsertSection(sec); err != nil {
 			log.Printf("WARNING: failed to upsert section %q: %v", sec.ID, err)
 			continue
 		}
