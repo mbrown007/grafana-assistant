@@ -292,6 +292,7 @@ func main() {
 		KBVectorDBPath:     cfg.KBVectorDBPath,
 		KBEmbeddingModel:   cfg.KBEmbeddingModel,
 		KBVectorMaxResults: cfg.KBVectorMaxResults,
+		KBDashboardMap:     cfg.KBDashboardMap,
 		OpenAIAPIKey:       cfg.OpenAIAPIKey,
 	})
 	if len(mcpClients) > 0 {

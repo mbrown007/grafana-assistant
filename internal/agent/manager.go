@@ -44,6 +44,7 @@ type Manager struct {
 	kbPlatformOnce    sync.Once
 	kbPlatformIndex   *kb.Index
 	kbPlatformErr     error
+	kbDashboardMap    map[string]string
 
 	// Hybrid KB: vector search fields.
 	kbStructuredPath   string
@@ -64,6 +65,7 @@ type ManagerConfig struct {
 	KBVectorDBPath     string
 	KBEmbeddingModel   string
 	KBVectorMaxResults int
+	KBDashboardMap     map[string]string
 	OpenAIAPIKey       string
 }
 
@@ -94,6 +96,7 @@ func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcon
 		kbStructuredPath:   cfg.KBStructuredPath,
 		kbVectorDBPath:     cfg.KBVectorDBPath,
 		kbVectorMaxResults: cfg.KBVectorMaxResults,
+		kbDashboardMap:     normalizeDashboardMap(cfg.KBDashboardMap),
 	}
 
 	// Create embedder if API key and vector path are configured.
@@ -577,6 +580,21 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max]
+}
+
+func normalizeDashboardMap(mapping map[string]string) map[string]string {
+	if len(mapping) == 0 {
+		return nil
+	}
+	normalized := make(map[string]string, len(mapping))
+	for k, v := range mapping {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" || v == "" {
+			continue
+		}
+		normalized[key] = v
+	}
+	return normalized
 }
 
 func newSessionID() string {

@@ -101,7 +101,14 @@ This dashboard tracks chat volume and audit logs.
 		t.Fatalf("write file: %v", err)
 	}
 
-	mgr := NewManager(nil, nil, nil, nil, nil, ManagerConfig{KBPath: dir, KBMaxSections: 2, KBMaxSectionChars: 500})
+	mgr := NewManager(nil, nil, nil, nil, nil, ManagerConfig{
+		KBPath:            dir,
+		KBMaxSections:     2,
+		KBMaxSectionChars: 500,
+		KBDashboardMap: map[string]string{
+			"monitoring assistant observability": "Monitoring_Assistant/monitoring_assistant_observability_dashboard.md",
+		},
+	})
 	reqCtx := &api.DashboardContext{Name: "Monitoring Assistant Observability"}
 
 	ctx, _, _ := mgr.buildKBContext("what is this dashboard", nil, reqCtx, true)
