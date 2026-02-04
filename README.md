@@ -167,7 +167,52 @@ nano .env              # Add ASSISTANT_OPENAI_API_KEY, ASSISTANT_GRAFANA_TOKEN
 
 With stdio transport, the assistant spawns MCP servers as child processes - no separate services needed.
 
-See `dev/lab/README.md` for full setup instructions including HAProxy configuration.
+### HAProxy Configuration
+
+When running behind HAProxy (e.g., Grafana at root, assistant at `/assistant`):
+
+**Frontend** - Add routing rule:
+```cfg
+frontend https_front
+    bind *:443 ssl crt /etc/haproxy/certs/your-cert.pem
+    mode http
+    default_backend grafana_backend
+
+    # Route /assistant/* to assistant backend
+    use_backend assistant_backend if { path_beg /assistant }
+
+    # Redirect /assistant to /assistant/ for consistent URLs
+    http-request redirect code 301 location /assistant/ if { path -i /assistant }
+```
+
+**Backend** - Strip prefix and forward headers:
+```cfg
+backend assistant_backend
+    mode http
+
+    # Strip /assistant prefix (assistant receives /api/chat, not /assistant/api/chat)
+    http-request set-path %[path,regsub(^/assistant,)]
+
+    # CRITICAL: Tell assistant its external path for cookies and frontend config
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Prefix /assistant
+
+    server assistant 127.0.0.1:5480 check
+```
+
+**Assistant config** - Use empty `base_path` (HAProxy strips the prefix):
+```yaml
+listen_addr: ":5480"
+base_path: ""  # Empty - HAProxy strips /assistant, X-Forwarded-Prefix tells us the real path
+allowed_origin: "https://your-domain.com"
+```
+
+The assistant reads `X-Forwarded-Prefix` to:
+- Set correct cookie paths (`/assistant/`)
+- Configure frontend base URL for assets and API calls
+
+See `dev/haproxy/` for a complete Docker-based example setup.
 
 ### Other
 
