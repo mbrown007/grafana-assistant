@@ -18,6 +18,13 @@ ENV_FILE="./.env"
 PID_FILE="./assistant.pid"
 LOG_FILE="./assistant.log"
 
+# MCP server binaries (stdio transport)
+MCP_BINARIES=(
+    "./mcp-grafana"
+    "./mcp-alertmanager"
+    "./mcp-kb"
+)
+
 # Load environment variables from .env if it exists
 load_env() {
     if [ -f "$ENV_FILE" ]; then
@@ -31,11 +38,39 @@ load_env() {
 check_binary() {
     if [ ! -f "$BINARY" ]; then
         echo "Error: Binary not found at $BINARY"
-        echo "Copy the assistant binary to this directory first."
+        echo ""
+        echo "Required binaries:"
+        echo "  - assistant"
+        echo "  - mcp-grafana"
+        echo "  - mcp-alertmanager"
+        echo "  - mcp-kb"
+        echo ""
+        echo "Build with: make build-all"
         exit 1
     fi
     if [ ! -x "$BINARY" ]; then
         chmod +x "$BINARY"
+    fi
+}
+
+check_mcp_binaries() {
+    local missing=()
+    for bin in "${MCP_BINARIES[@]}"; do
+        if [ ! -f "$bin" ]; then
+            missing+=("$bin")
+        elif [ ! -x "$bin" ]; then
+            chmod +x "$bin"
+        fi
+    done
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "Error: Missing MCP server binaries:"
+        for bin in "${missing[@]}"; do
+            echo "  - $bin"
+        done
+        echo ""
+        echo "Build with: make build-all"
+        exit 1
     fi
 }
 
@@ -62,6 +97,7 @@ is_running() {
 
 start_foreground() {
     check_binary
+    check_mcp_binaries
     check_config
     load_env
 
@@ -71,6 +107,11 @@ start_foreground() {
     echo "Config:  $CONFIG"
     echo "Listen:  :5480"
     echo "Grafana: http://127.0.0.1:3000"
+    echo ""
+    echo "MCP servers (stdio):"
+    for bin in "${MCP_BINARIES[@]}"; do
+        echo "  - $(basename $bin)"
+    done
     echo ""
     echo "Access via: https://mon.sabio.cloud/assistant/"
     echo ""
@@ -83,6 +124,7 @@ start_foreground() {
 
 start_background() {
     check_binary
+    check_mcp_binaries
     check_config
     load_env
 
@@ -92,9 +134,10 @@ start_background() {
     fi
 
     echo "Starting in background..."
+    echo "MCP servers: ${MCP_BINARIES[*]}"
     nohup "$BINARY" -config "$CONFIG" > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
-    sleep 1
+    sleep 2
 
     if is_running; then
         echo "Started (PID: $(get_pid))"

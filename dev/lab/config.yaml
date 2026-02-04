@@ -41,17 +41,26 @@ metrics_enabled: true
 # Security - allow requests from HAProxy frontend
 allowed_origin: "https://mon.sabio.cloud"
 
-# MCP servers
+# MCP servers (stdio transport - binaries in same directory)
+# Environment variables for each server come from .env file
 mcp_servers:
-  - name: "alertmanager"
-    transport: "sse"
-    url: "http://localhost:8000"
   - name: "grafana"
-    transport: "sse"
-    url: "http://localhost:8001"
-  - name: "genesyscloud"
-    transport: "sse"
-    url: "http://localhost:8002"
+    transport: "stdio"
+    command: "./mcp-grafana"
+    args: ["-transport", "stdio"]
+    env:
+      GRAFANA_URL: "http://127.0.0.1:3000"
+
+  - name: "alertmanager"
+    transport: "stdio"
+    command: "./mcp-alertmanager"
+    args: ["-transport", "stdio"]
+    env:
+      ALERTMANAGER_URL: "http://127.0.0.1:9093"
+
   - name: "kb"
-    transport: "sse"
-    url: "http://localhost:8003"
+    transport: "stdio"
+    command: "./mcp-kb"
+    args: ["-transport", "stdio"]
+    env:
+      KB_PATH: "./KB"
