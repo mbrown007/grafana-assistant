@@ -1,0 +1,127 @@
+services:
+  haproxy:
+    image: haproxy:2.9
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./certs:/usr/local/etc/haproxy/certs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      grafana:
+        condition: service_started
+      assistant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "13000:3000"
+    environment:
+      # Grafana at root URL (like production maas.fqdn.com)
+      - GF_SERVER_ROOT_URL=https://localhost:8443/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # Auth settings
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_BASIC_ENABLED=true
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Allow embedding assistant iframe
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_SECURITY_COOKIE_SAMESITE=none
+      - GF_SECURITY_COOKIE_SECURE=true
+      # Panel plugin for assistant
+      - GF_PANELS_DISABLE_SANITIZE_HTML=true
+    volumes:
+      - ../../containers/grafana/provisioning:/etc/grafana/provisioning
+      - ../../containers/grafana/dashboards:/etc/grafana/dashboards
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      alertmanager:
+        condition: service_healthy
+
+  assistant:
+    image: golang:1.25.5
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    env_file:
+      - ../../.env
+    environment:
+      # MCP server environment variables
+      - ALERTMANAGER_URL=http://alertmanager:9093
+      - GRAFANA_URL=http://grafana:3000
+      # Pass the Grafana token to MCP server (uses new env var name)
+      - GRAFANA_SERVICE_ACCOUNT_TOKEN=${ASSISTANT_GRAFANA_TOKEN}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Building MCP servers..."
+        cd mcp_servers/mcp-grafana && go build -o /tmp/mcp-grafana ./cmd/mcp-grafana && cd ../..
+        cd mcp_servers/alertmanager-mcp-go && go build -o /tmp/mcp-alertmanager ./cmd/server && cd ../..
+        cd mcp_servers/kb-mcp-go && go build -o /tmp/mcp-kb ./cmd/server && cd ../..
+        echo "MCP servers built. Starting assistant..."
+        go run ./cmd/assistant -config dev/haproxy/config.assistant.docker.yaml
+    depends_on:
+      grafana:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5470/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+
+  prometheus:
+    image: prom/prometheus:v2.45.3
+    ports:
+      - "19090:9090"
+    volumes:
+      - ../../containers/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - --web.enable-remote-write-receiver
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.external-url=https://localhost:8443/prometheus/
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/prometheus/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "19093:9093"
+    volumes:
+      - ../../containers/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --web.external-url=https://localhost:8443/alertmanager/
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/alertmanager/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.6.0
+    user: "0"
+    ports:
+      - "13100:3100"
+    volumes:
+      - ../../containers/loki/loki-config.yaml:/mnt/config/loki-config.yaml
+    command:
+      - -config.file=/mnt/config/loki-config.yaml

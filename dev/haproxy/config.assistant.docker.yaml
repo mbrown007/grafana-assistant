@@ -1,0 +1,56 @@
+# Assistant config for HAProxy dev setup (containerized)
+# Run via docker compose in dev/haproxy/docker-compose.yml
+
+listen_addr: ":5470"
+
+# Grafana backend URL (Docker service)
+grafana_url: "http://grafana:3000"
+
+# NO base_path - HAProxy strips /assistant prefix before forwarding
+# The assistant receives requests at / but browsers access /assistant
+# We rely on X-Forwarded-Prefix header from HAProxy to know the real path
+base_path: ""
+
+# Database
+db_path: "data/assistant-haproxy-dev.db"
+
+# Disable audit log for dev
+audit_log_path: ""
+
+# OpenAI (set via env: ASSISTANT_OPENAI_API_KEY)
+openai_model: "gpt-4o"
+
+# KB
+kb_path: "KB"
+kb_max_sections: 2
+kb_max_section_chars: 2000
+
+# Metrics
+metrics_enabled: true
+
+# Security - allow the HAProxy frontend origin
+allowed_origin: "https://localhost:8443"
+
+# MCP servers using stdio transport (binaries built by container startup)
+# Note: GRAFANA_SERVICE_ACCOUNT_TOKEN is passed from container environment
+mcp_servers:
+  - name: "grafana"
+    transport: "stdio"
+    command: "/tmp/mcp-grafana"
+    args: ["-transport", "stdio"]
+    env:
+      GRAFANA_URL: "http://grafana:3000"
+
+  - name: "alertmanager"
+    transport: "stdio"
+    command: "/tmp/mcp-alertmanager"
+    args: ["-transport", "stdio"]
+    env:
+      ALERTMANAGER_URL: "http://alertmanager:9093"
+
+  - name: "kb"
+    transport: "stdio"
+    command: "/tmp/mcp-kb"
+    args: ["-transport", "stdio"]
+    env:
+      KB_PATH: "KB"

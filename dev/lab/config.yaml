@@ -1,0 +1,57 @@
+# Monitoring Assistant - Lab Configuration
+# Server: 10.222.251.176
+# HAProxy: HTTPS 443 -> Grafana 3000, /assistant -> Assistant 5480
+#
+# HAProxy strips /assistant prefix and forwards X-Forwarded-Prefix header.
+# The assistant reads this header to set correct cookie paths and frontend base path.
+
+# Listen on port 5480 (HAProxy forwards /assistant/* here)
+listen_addr: ":5480"
+
+# Empty base_path - HAProxy strips /assistant before forwarding.
+# The X-Forwarded-Prefix header tells the assistant its external path.
+base_path: ""
+
+# Grafana backend URL (direct, not via HAProxy)
+grafana_url: "http://127.0.0.1:3000"
+
+# Grafana service account token (set via environment variable or .env file)
+# grafana_token: "glsa_xxx"
+
+# Data retention
+data_retention_days: 30
+scratchpad_ttl_days: 7
+scratchpad_folder: "Assistant Scratchpads"
+
+# Database and logs (relative to working directory)
+db_path: "data/assistant.db"
+audit_log_path: "data/audit.log"
+
+# OpenAI (set via environment variable: ASSISTANT_OPENAI_API_KEY)
+openai_model: "gpt-4o"
+
+# Knowledge base
+kb_path: "KB"
+kb_max_sections: 2
+kb_max_section_chars: 2000
+
+# Metrics
+metrics_enabled: true
+
+# Security - allow requests from HAProxy frontend
+allowed_origin: "https://mon.sabio.cloud"
+
+# MCP servers
+mcp_servers:
+  - name: "alertmanager"
+    transport: "sse"
+    url: "http://localhost:8000"
+  - name: "grafana"
+    transport: "sse"
+    url: "http://localhost:8001"
+  - name: "genesyscloud"
+    transport: "sse"
+    url: "http://localhost:8002"
+  - name: "kb"
+    transport: "sse"
+    url: "http://localhost:8003"
