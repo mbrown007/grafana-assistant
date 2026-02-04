@@ -80,9 +80,11 @@ This builds and starts the MCP servers, Go backend, and Vite frontend dev server
 | Command | Description |
 |---|---|
 | `make build` | Build the Go backend binary to `bin/assistant` |
+| `make build-all` | Build assistant + all MCP server binaries |
 | `make frontend-build` | Build frontend into `frontend/dist/` for Go embedding |
 | `make package` | Build frontend + Go binary for single-file deploy |
 | `make mcp-build` | Build all MCP server binaries to `bin/` |
+| `make deploy-lab` | Create `deploy/lab/` folder ready for deployment |
 
 ### MCP Servers
 
@@ -122,6 +124,50 @@ make package
 This embeds the built frontend into the single `bin/assistant` binary. See
 `docs/DEPLOYMENT.md` for a systemd unit template, recommended layout, and
 network/security notes.
+
+### Lab/Production Deployment (stdio transport)
+
+For single-host deployments where all binaries run together:
+
+```bash
+# Build all binaries and create deployment folder
+make deploy-lab
+```
+
+This creates `deploy/lab/` with:
+```
+deploy/lab/
+├── assistant          # Main binary
+├── mcp-grafana        # Grafana MCP server
+├── mcp-alertmanager   # Alertmanager MCP server
+├── mcp-kb             # Knowledge base MCP server
+├── config.yaml        # Configuration (stdio transport)
+├── run.sh             # Runner script
+├── .env.example       # Environment template
+└── KB/                # Knowledge base
+```
+
+Deploy to server:
+```bash
+scp -r deploy/lab/* user@server:~/grafana-assistant/
+```
+
+On the server:
+```bash
+cd ~/grafana-assistant
+cp .env.example .env
+nano .env              # Add ASSISTANT_OPENAI_API_KEY, ASSISTANT_GRAFANA_TOKEN
+
+./run.sh               # Run in foreground (Ctrl+C to stop)
+./run.sh start         # Run in background
+./run.sh status        # Check status
+./run.sh logs          # Tail logs
+./run.sh stop          # Stop
+```
+
+With stdio transport, the assistant spawns MCP servers as child processes - no separate services needed.
+
+See `dev/lab/README.md` for full setup instructions including HAProxy configuration.
 
 ### Other
 
