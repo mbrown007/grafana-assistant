@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monitoring Assistant</title>
+    <!-- config.js must load first - served by Go backend, sets __ASSISTANT_BASE_PATH__ -->
+    <script src="config.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,7 +15,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="./config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

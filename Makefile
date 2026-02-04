@@ -1,4 +1,4 @@
-.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e
+.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs
 .PHONY: audit-log-dir
 
 BIN := bin/assistant
@@ -43,6 +43,19 @@ docker-down: ## Stop Docker stack
 # E2E aliases
 e2e-up: docker-up
 e2e-down: docker-down
+
+# ---------------------------------------------------------------------------
+# HAProxy dev environment (simulates prod reverse proxy)
+# ---------------------------------------------------------------------------
+
+haproxy-up: ## Start HAProxy dev environment (Grafana + Assistant behind proxy)
+	cd dev/haproxy && ./setup.sh
+
+haproxy-down: ## Stop HAProxy dev environment
+	docker compose -f dev/haproxy/docker-compose.yml down -v
+
+haproxy-logs: ## Tail HAProxy logs
+	docker compose -f dev/haproxy/docker-compose.yml logs -f haproxy
 
 test-e2e: ## Run E2E tests (requires e2e-up)
 	go test -tags=e2e -count=1 -timeout=180s -v ./tests/e2e/...
