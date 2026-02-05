@@ -2,11 +2,9 @@ package mcp
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -63,19 +61,19 @@ func TestStdioClient(t *testing.T) {
 }
 
 func runStdioHelper() {
-	reader := bufio.NewReader(os.Stdin)
+	scanner := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	defer writer.Flush()
 
-	for i := 0; i < 2; i++ {
-		msg, err := readFramedMessage(reader)
-		if err != nil {
-			if err == io.EOF {
-				return
+	// Handle: initialize, notifications/initialized (no response), tools/list, tools/call
+	for {
+		if !scanner.Scan() {
+			if scanner.Err() != nil {
+				fmt.Fprintln(os.Stderr, "helper read error:", scanner.Err())
 			}
-			fmt.Fprintln(os.Stderr, "helper read error:", err)
 			return
 		}
+		msg := scanner.Bytes()
 
 		var req struct {
 			ID     json.RawMessage `json:"id"`
@@ -88,6 +86,23 @@ func runStdioHelper() {
 		}
 
 		switch req.Method {
+		case "initialize":
+			resp := map[string]any{
+				"jsonrpc": "2.0",
+				"id":      json.RawMessage(req.ID),
+				"result": map[string]any{
+					"protocolVersion": "2024-11-05",
+					"capabilities":    map[string]any{},
+					"serverInfo": map[string]any{
+						"name":    "test-helper",
+						"version": "1.0.0",
+					},
+				},
+			}
+			writeNDJSONResponse(writer, resp)
+		case "notifications/initialized":
+			// No response needed for notifications
+			continue
 		case "tools/list":
 			resp := map[string]any{
 				"jsonrpc": "2.0",
@@ -102,7 +117,7 @@ func runStdioHelper() {
 					},
 				},
 			}
-			writeFramedResponse(writer, resp)
+			writeNDJSONResponse(writer, resp)
 		case "tools/call":
 			var params struct {
 				Name      string         `json:"name"`
@@ -121,7 +136,8 @@ func runStdioHelper() {
 					},
 				},
 			}
-			writeFramedResponse(writer, resp)
+			writeNDJSONResponse(writer, resp)
+			return // Done after tool call
 		default:
 			resp := map[string]any{
 				"jsonrpc": "2.0",
@@ -131,18 +147,14 @@ func runStdioHelper() {
 					"message": "method not found",
 				},
 			}
-			writeFramedResponse(writer, resp)
+			writeNDJSONResponse(writer, resp)
 		}
 	}
 }
 
-func writeFramedResponse(w *bufio.Writer, resp map[string]any) {
+func writeNDJSONResponse(w *bufio.Writer, resp map[string]any) {
 	b, _ := json.Marshal(resp)
-	var buf bytes.Buffer
-	buf.WriteString("Content-Length: ")
-	buf.WriteString(fmt.Sprintf("%d", len(b)))
-	buf.WriteString("\r\n\r\n")
-	buf.Write(b)
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(b)
+	_, _ = w.Write([]byte("\n"))
 	_ = w.Flush()
 }

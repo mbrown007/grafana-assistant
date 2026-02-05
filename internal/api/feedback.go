@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
 
@@ -50,7 +51,7 @@ func FeedbackHandler(store storage.Store, resolver UserResolver) http.HandlerFun
 
 		now := time.Now()
 		feedback := &storage.Feedback{
-			ID:        fmt.Sprintf("%s-%d-feedback", req.SessionID, now.UnixMilli()),
+			ID:        uuid.NewString(),
 			SessionID: req.SessionID,
 			MessageID: req.MessageID,
 			UserID:    user.ID,

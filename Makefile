@@ -1,10 +1,13 @@
-.PHONY: build run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e
+.PHONY: build build-all run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs deploy-lab
 .PHONY: audit-log-dir
 
 BIN := bin/assistant
 
 build: ## Build the Go binary
 	go build -o $(BIN) ./cmd/assistant
+
+build-all: build mcp-build ## Build assistant + all MCP server binaries
+	@echo "All binaries built in bin/"
 
 kb-reindex: ## Rebuild KB indexes (token + vector from markdown)
 	go run ./cmd/kb-reindex -structured-path KB/runbooks -vector-path KB/platform
@@ -43,6 +46,19 @@ docker-down: ## Stop Docker stack
 # E2E aliases
 e2e-up: docker-up
 e2e-down: docker-down
+
+# ---------------------------------------------------------------------------
+# HAProxy dev environment (simulates prod reverse proxy)
+# ---------------------------------------------------------------------------
+
+haproxy-up: ## Start HAProxy dev environment (Grafana + Assistant behind proxy)
+	cd dev/haproxy && ./setup.sh
+
+haproxy-down: ## Stop HAProxy dev environment
+	docker compose -f dev/haproxy/docker-compose.yml down -v
+
+haproxy-logs: ## Tail HAProxy logs
+	docker compose -f dev/haproxy/docker-compose.yml logs -f haproxy
 
 test-e2e: ## Run E2E tests (requires e2e-up)
 	go test -tags=e2e -count=1 -timeout=180s -v ./tests/e2e/...
@@ -154,6 +170,23 @@ install-systemd: package ## Install systemd unit and binary (requires sudo)
 	sudo install -m 0644 deploy/monitoring-assistant.service /etc/systemd/system/
 	sudo systemctl daemon-reload
 	@echo "Installed systemd unit. Edit /etc/monitoring-assistant/config.yaml as needed."
+
+deploy-lab: frontend-build build-all ## Create lab deployment folder with all binaries
+	@mkdir -p deploy/lab
+	@cp bin/assistant deploy/lab/
+	@cp bin/mcp-grafana deploy/lab/
+	@cp bin/mcp-alertmanager deploy/lab/
+	@cp bin/mcp-kb deploy/lab/
+	@cp dev/lab/config.yaml deploy/lab/
+	@cp dev/lab/run.sh deploy/lab/
+	@cp dev/lab/.env.example deploy/lab/
+	@cp -r KB deploy/lab/ 2>/dev/null || true
+	@chmod +x deploy/lab/run.sh deploy/lab/assistant deploy/lab/mcp-*
+	@echo ""
+	@echo "Lab deployment ready in deploy/lab/"
+	@echo ""
+	@echo "Copy to server:"
+	@echo "  scp -r deploy/lab/* user@server:~/grafana-assistant/"
 
 help: ## Show this help
 	@grep -E '^[a-z][a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'

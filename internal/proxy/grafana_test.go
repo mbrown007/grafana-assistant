@@ -122,3 +122,89 @@ func TestPathPassthrough(t *testing.T) {
 		t.Errorf("expected path /grafana/d/abc123/my-dashboard, got %q", receivedPath)
 	}
 }
+
+func TestCookiePathWithForwardedPrefix(t *testing.T) {
+	// Fake Grafana that sets a cookie with path=/grafana
+	fakeGrafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Set-Cookie", "grafana_session=abc123; Path=/grafana; HttpOnly")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fakeGrafana.Close()
+
+	handler, err := GrafanaHandler(fakeGrafana.URL)
+	if err != nil {
+		t.Fatalf("GrafanaHandler: %v", err)
+	}
+
+	// Test with X-Forwarded-Prefix=/assistant
+	req := httptest.NewRequest("GET", "/grafana/", nil)
+	req.Header.Set("X-Forwarded-Prefix", "/assistant")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	cookies := resp.Header.Values("Set-Cookie")
+	if len(cookies) == 0 {
+		t.Fatal("expected Set-Cookie header")
+	}
+
+	cookie := cookies[0]
+	// Path should be rewritten from /grafana to /assistant/
+	if !contains(cookie, "Path=/assistant/") {
+		t.Errorf("expected cookie path /assistant/, got: %s", cookie)
+	}
+	// Should have SameSite=None for HTTPS
+	if !contains(cookie, "SameSite=None") {
+		t.Errorf("expected SameSite=None for HTTPS, got: %s", cookie)
+	}
+	// Should have Secure flag
+	if !contains(cookie, "Secure") {
+		t.Errorf("expected Secure flag for HTTPS, got: %s", cookie)
+	}
+}
+
+func TestCookieSameSiteForHTTP(t *testing.T) {
+	// Fake Grafana that sets a cookie
+	fakeGrafana := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Set-Cookie", "grafana_session=abc123")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fakeGrafana.Close()
+
+	handler, err := GrafanaHandler(fakeGrafana.URL)
+	if err != nil {
+		t.Fatalf("GrafanaHandler: %v", err)
+	}
+
+	// Test without X-Forwarded-Proto (HTTP)
+	req := httptest.NewRequest("GET", "/grafana/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	cookies := resp.Header.Values("Set-Cookie")
+	if len(cookies) == 0 {
+		t.Fatal("expected Set-Cookie header")
+	}
+
+	cookie := cookies[0]
+	// Should have SameSite=Lax for HTTP (not None, which requires Secure)
+	if !contains(cookie, "SameSite=Lax") {
+		t.Errorf("expected SameSite=Lax for HTTP, got: %s", cookie)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

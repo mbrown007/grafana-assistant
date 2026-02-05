@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/marcusz/monitoring-assistant/internal/api"
 )
@@ -29,8 +30,12 @@ type exploreOpenArgs struct {
 
 func buildExploreURL(args map[string]any, reqCtx *api.DashboardContext) (string, error) {
 	var parsed exploreOpenArgs
-	if raw, err := json.Marshal(args); err == nil {
-		_ = json.Unmarshal(raw, &parsed)
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return "", fmt.Errorf("marshal explore args: %w", err)
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", fmt.Errorf("parse explore args: %w", err)
 	}
 
 	queries := parsed.Queries
@@ -48,6 +53,7 @@ func buildExploreURL(args map[string]any, reqCtx *api.DashboardContext) (string,
 		if reqCtx != nil && reqCtx.Explore != nil && reqCtx.Explore.Datasource != "" {
 			uid = reqCtx.Explore.Datasource
 		}
+		typeName = guessDatasourceType(uid)
 		datasource = map[string]any{"uid": uid, "type": typeName}
 	}
 
@@ -58,7 +64,7 @@ func buildExploreURL(args map[string]any, reqCtx *api.DashboardContext) (string,
 
 	for i := range queries {
 		if queries[i].RefID == "" {
-			queries[i].RefID = string(rune('A' + i))
+			queries[i].RefID = refIDFromIndex(i)
 		}
 		if queries[i].EditorMode == "" {
 			queries[i].EditorMode = "code"
@@ -113,4 +119,31 @@ func buildExploreURL(args map[string]any, reqCtx *api.DashboardContext) (string,
 	params.Set("orgId", strconv.Itoa(orgID))
 
 	return "/grafana/explore?" + params.Encode(), nil
+}
+
+func refIDFromIndex(index int) string {
+	if index < 0 {
+		return "A"
+	}
+	alphabet := 26
+	var out []byte
+	for index >= 0 {
+		out = append([]byte{byte('A' + (index % alphabet))}, out...)
+		index = (index / alphabet) - 1
+	}
+	return string(out)
+}
+
+func guessDatasourceType(uid string) string {
+	lower := strings.ToLower(uid)
+	switch {
+	case strings.Contains(lower, "loki"):
+		return "loki"
+	case strings.Contains(lower, "tempo"):
+		return "tempo"
+	case strings.Contains(lower, "influx"):
+		return "influxdb"
+	default:
+		return "prometheus"
+	}
 }

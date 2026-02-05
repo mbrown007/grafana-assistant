@@ -51,10 +51,16 @@ func spaHandler(basePath string) (http.Handler, error) {
 		}
 
 		if r.URL.Path == "/config.js" {
+			// Use X-Forwarded-Prefix from reverse proxy if available,
+			// otherwise fall back to configured basePath.
+			effectiveBase := basePath
+			if fwdPrefix := r.Header.Get("X-Forwarded-Prefix"); fwdPrefix != "" {
+				effectiveBase = strings.TrimSuffix(fwdPrefix, "/")
+			}
 			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusOK)
-			js := "window.__ASSISTANT_BASE_PATH__ = " + strconv.Quote(basePath) + ";\n"
+			js := "window.__ASSISTANT_BASE_PATH__ = " + strconv.Quote(effectiveBase) + ";\n"
 			w.Write([]byte(js))
 			return
 		}
@@ -292,6 +298,7 @@ func main() {
 		KBVectorDBPath:     cfg.KBVectorDBPath,
 		KBEmbeddingModel:   cfg.KBEmbeddingModel,
 		KBVectorMaxResults: cfg.KBVectorMaxResults,
+		KBDashboardMap:     cfg.KBDashboardMap,
 		OpenAIAPIKey:       cfg.OpenAIAPIKey,
 	})
 	if len(mcpClients) > 0 {

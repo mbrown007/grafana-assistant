@@ -50,11 +50,12 @@ type Config struct {
 	KBMaxSectionChars int `yaml:"kb_max_section_chars"`
 
 	// Hybrid KB: structured (token) and vector paths.
-	KBStructuredPath   string `yaml:"kb_structured_path"`    // default: "KB/runbooks"
-	KBVectorPath       string `yaml:"kb_vector_path"`        // default: "" (disabled)
-	KBVectorDBPath     string `yaml:"kb_vector_db_path"`     // default: "KB/.kb_vectors.db"
-	KBEmbeddingModel   string `yaml:"kb_embedding_model"`    // default: "text-embedding-3-small"
-	KBVectorMaxResults int    `yaml:"kb_vector_max_results"` // default: 2
+	KBStructuredPath   string            `yaml:"kb_structured_path"`    // default: "KB/runbooks"
+	KBVectorPath       string            `yaml:"kb_vector_path"`        // default: "" (disabled)
+	KBVectorDBPath     string            `yaml:"kb_vector_db_path"`     // default: "KB/.kb_vectors.db"
+	KBEmbeddingModel   string            `yaml:"kb_embedding_model"`    // default: "text-embedding-3-small"
+	KBVectorMaxResults int               `yaml:"kb_vector_max_results"` // default: 2
+	KBDashboardMap     map[string]string `yaml:"kb_dashboard_map"`      // dashboard uid/name -> KB platform path
 
 	// Metrics.
 	MetricsEnabled bool `yaml:"metrics_enabled"`
@@ -102,10 +103,10 @@ func Load(path string) (*Config, error) {
 	loadDotEnv(".env")
 
 	cfg := &Config{
-		ListenAddr:        ":8080",
-		DataRetentionDays: 30,
-		DBPath:            "data/assistant.db",
-		OpenAIModel:       "gpt-4o",
+		ListenAddr:         ":8080",
+		DataRetentionDays:  30,
+		DBPath:             "data/assistant.db",
+		OpenAIModel:        "gpt-4o",
 		KBPath:             "KB",
 		KBMaxSections:      2,
 		KBMaxSectionChars:  2000,
@@ -113,14 +114,15 @@ func Load(path string) (*Config, error) {
 		KBVectorDBPath:     "KB/.kb_vectors.db",
 		KBEmbeddingModel:   "text-embedding-3-small",
 		KBVectorMaxResults: 2,
-		ScratchpadTTLDays: 7,
-		ScratchpadFolder:  "Assistant Scratchpads",
-		AuditLogPath:      "/var/log/grafana-assistant/audit.log",
-		MetricsEnabled:    true,
-		MaxMessageLength:  16000,
-		MaxBodySize:       65536,
-		RateLimitPerMin:   20,
-		RateLimitBurst:    5,
+		KBDashboardMap:     map[string]string{},
+		ScratchpadTTLDays:  7,
+		ScratchpadFolder:   "Assistant Scratchpads",
+		AuditLogPath:       "/var/log/grafana-assistant/audit.log",
+		MetricsEnabled:     true,
+		MaxMessageLength:   16000,
+		MaxBodySize:        65536,
+		RateLimitPerMin:    20,
+		RateLimitBurst:     5,
 	}
 
 	data, err := os.ReadFile(path)

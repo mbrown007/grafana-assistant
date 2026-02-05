@@ -51,6 +51,10 @@ openai_model: "gpt-4o"
 # kb_vector_db_path: "KB/.kb_vectors.db"      # SQLite vector store
 # kb_embedding_model: "text-embedding-3-small" # OpenAI embedding model
 # kb_vector_max_results: 2                     # Max vector results per query
+# kb_dashboard_map:
+#   monitoring-assistant-dev: "Monitoring_Assistant/monitoring_assistant_dev_dashboard.md"
+#   monitoring assistant (dev): "Monitoring_Assistant/monitoring_assistant_dev_dashboard.md"
+#   monitoring assistant observability: "Monitoring_Assistant/monitoring_assistant_observability_dashboard.md"
 
 # Prometheus metrics (default: true)
 metrics_enabled: true

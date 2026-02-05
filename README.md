@@ -80,9 +80,11 @@ This builds and starts the MCP servers, Go backend, and Vite frontend dev server
 | Command | Description |
 |---|---|
 | `make build` | Build the Go backend binary to `bin/assistant` |
+| `make build-all` | Build assistant + all MCP server binaries |
 | `make frontend-build` | Build frontend into `frontend/dist/` for Go embedding |
 | `make package` | Build frontend + Go binary for single-file deploy |
 | `make mcp-build` | Build all MCP server binaries to `bin/` |
+| `make deploy-lab` | Create `deploy/lab/` folder ready for deployment |
 
 ### MCP Servers
 
@@ -122,6 +124,95 @@ make package
 This embeds the built frontend into the single `bin/assistant` binary. See
 `docs/DEPLOYMENT.md` for a systemd unit template, recommended layout, and
 network/security notes.
+
+### Lab/Production Deployment (stdio transport)
+
+For single-host deployments where all binaries run together:
+
+```bash
+# Build all binaries and create deployment folder
+make deploy-lab
+```
+
+This creates `deploy/lab/` with:
+```
+deploy/lab/
+├── assistant          # Main binary
+├── mcp-grafana        # Grafana MCP server
+├── mcp-alertmanager   # Alertmanager MCP server
+├── mcp-kb             # Knowledge base MCP server
+├── config.yaml        # Configuration (stdio transport)
+├── run.sh             # Runner script
+├── .env.example       # Environment template
+└── KB/                # Knowledge base
+```
+
+Deploy to server:
+```bash
+scp -r deploy/lab/* user@server:~/grafana-assistant/
+```
+
+On the server:
+```bash
+cd ~/grafana-assistant
+cp .env.example .env
+nano .env              # Add ASSISTANT_OPENAI_API_KEY, ASSISTANT_GRAFANA_TOKEN
+
+./run.sh               # Run in foreground (Ctrl+C to stop)
+./run.sh start         # Run in background
+./run.sh status        # Check status
+./run.sh logs          # Tail logs
+./run.sh stop          # Stop
+```
+
+With stdio transport, the assistant spawns MCP servers as child processes - no separate services needed.
+
+### HAProxy Configuration
+
+When running behind HAProxy (e.g., Grafana at root, assistant at `/assistant`):
+
+**Frontend** - Add routing rule:
+```cfg
+frontend https_front
+    bind *:443 ssl crt /etc/haproxy/certs/your-cert.pem
+    mode http
+    default_backend grafana_backend
+
+    # Route /assistant/* to assistant backend
+    use_backend assistant_backend if { path_beg /assistant }
+
+    # Redirect /assistant to /assistant/ for consistent URLs
+    http-request redirect code 301 location /assistant/ if { path -i /assistant }
+```
+
+**Backend** - Strip prefix and forward headers:
+```cfg
+backend assistant_backend
+    mode http
+
+    # Strip /assistant prefix (assistant receives /api/chat, not /assistant/api/chat)
+    http-request set-path %[path,regsub(^/assistant,)]
+
+    # CRITICAL: Tell assistant its external path for cookies and frontend config
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Prefix /assistant
+
+    server assistant 127.0.0.1:5480 check
+```
+
+**Assistant config** - Use empty `base_path` (HAProxy strips the prefix):
+```yaml
+listen_addr: ":5480"
+base_path: ""  # Empty - HAProxy strips /assistant, X-Forwarded-Prefix tells us the real path
+allowed_origin: "https://your-domain.com"
+```
+
+The assistant reads `X-Forwarded-Prefix` to:
+- Set correct cookie paths (`/assistant/`)
+- Configure frontend base URL for assets and API calls
+
+See `dev/haproxy/` for a complete Docker-based example setup.
 
 ### Other
 

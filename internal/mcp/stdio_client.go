@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -93,14 +91,65 @@ func NewStdioClient(cfg StdioConfig) (*StdioClient, error) {
 	return c, nil
 }
 
-// Connect discovers available tools. The process is started in NewStdioClient.
+// Connect initializes the MCP session and discovers available tools.
+// The process is started in NewStdioClient.
 func (c *StdioClient) Connect(ctx context.Context) error {
 	if !c.connected.Load() {
 		return fmt.Errorf("stdio server not running for %s", c.serverType)
 	}
+
+	// MCP protocol requires initialize handshake before any other calls.
+	if err := c.initialize(ctx); err != nil {
+		return fmt.Errorf("initialize: %w", err)
+	}
+
 	if _, err := c.DiscoverTools(ctx); err != nil {
 		return fmt.Errorf("discover tools: %w", err)
 	}
+	return nil
+}
+
+// initialize performs the MCP protocol handshake.
+func (c *StdioClient) initialize(ctx context.Context) error {
+	// Send initialize request
+	raw, err := c.jsonRPC(ctx, "initialize", map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "monitoring-assistant",
+			"version": "1.0.0",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("initialize request: %w", err)
+	}
+
+	var resp struct {
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("parse initialize response: %w", err)
+	}
+	if resp.Error != nil {
+		return fmt.Errorf("initialize error: %s", resp.Error.Message)
+	}
+
+	// Send initialized notification (no response expected)
+	notification := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}
+	payload, err := json.Marshal(notification)
+	if err != nil {
+		return fmt.Errorf("marshal initialized notification: %w", err)
+	}
+	if err := c.writeMessage(payload); err != nil {
+		return fmt.Errorf("send initialized notification: %w", err)
+	}
+
 	return nil
 }
 
@@ -253,29 +302,34 @@ func (c *StdioClient) writeMessage(payload []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	var buf bytes.Buffer
-	buf.WriteString("Content-Length: ")
-	buf.WriteString(strconv.Itoa(len(payload)))
-	buf.WriteString("\r\n\r\n")
-	buf.Write(payload)
-
-	if _, err := c.stdin.Write(buf.Bytes()); err != nil {
+	// Write raw JSON followed by newline (NDJSON format)
+	if _, err := c.stdin.Write(payload); err != nil {
 		return fmt.Errorf("stdio write: %w", err)
+	}
+	if _, err := c.stdin.Write([]byte("\n")); err != nil {
+		return fmt.Errorf("stdio write newline: %w", err)
 	}
 	return nil
 }
 
 func (c *StdioClient) readStream(stdout io.ReadCloser) {
-	reader := bufio.NewReader(stdout)
-	for {
-		msg, err := readFramedMessage(reader)
-		if err != nil {
-			if err != io.EOF {
-				slog.Warn("stdio read error", "type", c.serverType, "error", err)
-			}
-			break
+	scanner := bufio.NewScanner(stdout)
+	// Increase buffer size to handle large JSON responses
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
 		}
+		// Make a copy since scanner reuses buffer
+		msg := make([]byte, len(line))
+		copy(msg, line)
 		c.dispatchResponse(msg)
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("stdio read error", "type", c.serverType, "error", err)
 	}
 	c.connected.Store(false)
 }
@@ -308,38 +362,6 @@ func (c *StdioClient) dispatchResponse(data []byte) {
 	}
 }
 
-func readFramedMessage(r *bufio.Reader) ([]byte, error) {
-	contentLength := -1
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			break
-		}
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "content-length:") {
-			val := strings.TrimSpace(line[len("content-length:"):])
-			n, err := strconv.Atoi(val)
-			if err != nil {
-				return nil, fmt.Errorf("invalid content-length %q", val)
-			}
-			contentLength = n
-		}
-	}
-
-	if contentLength <= 0 {
-		return nil, fmt.Errorf("missing content-length")
-	}
-
-	body := make([]byte, contentLength)
-	if _, err := io.ReadFull(r, body); err != nil {
-		return nil, err
-	}
-	return body, nil
-}
 
 func (c *StdioClient) readStderr(stderr io.ReadCloser) {
 	scanner := bufio.NewScanner(stderr)

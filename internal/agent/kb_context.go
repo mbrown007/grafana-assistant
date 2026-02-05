@@ -16,7 +16,7 @@ func (m *Manager) buildKBContext(userMsg string, dashCtx *appcontext.DashboardSu
 	index := m.loadKBIndex()
 
 	if preferDashboardMap {
-		if mapped := findDashboardKBPath(reqCtx); mapped != "" {
+		if mapped := findDashboardKBPath(reqCtx, m.kbDashboardMap); mapped != "" {
 			platformIndex := m.loadKBPlatformIndex()
 			return m.buildKBContextFromPath(platformIndex, mapped)
 		}
@@ -254,23 +254,26 @@ func (m *Manager) buildKBContextFromPath(index *kb.Index, path string) (string, 
 	return strings.TrimSpace(b.String()), kbEvidence, vectorEvidence
 }
 
-func findDashboardKBPath(reqCtx *api.DashboardContext) string {
+func findDashboardKBPath(reqCtx *api.DashboardContext, mapping map[string]string) string {
 	if reqCtx == nil {
 		return ""
 	}
+	if len(mapping) == 0 {
+		return ""
+	}
+
 	uid := strings.ToLower(strings.TrimSpace(reqCtx.UID))
 	name := strings.ToLower(strings.TrimSpace(reqCtx.Name))
 
-	switch uid {
-	case "monitoring-assistant-dev":
-		return "Monitoring_Assistant/monitoring_assistant_dev_dashboard.md"
+	if uid != "" {
+		if path, ok := mapping[uid]; ok {
+			return path
+		}
 	}
-
-	switch name {
-	case "monitoring assistant (dev)":
-		return "Monitoring_Assistant/monitoring_assistant_dev_dashboard.md"
-	case "monitoring assistant observability":
-		return "Monitoring_Assistant/monitoring_assistant_observability_dashboard.md"
+	if name != "" {
+		if path, ok := mapping[name]; ok {
+			return path
+		}
 	}
 
 	return ""
