@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, MoreVertical, History, Plus, Trash2, Moon, X, Star, Check } from 'lucide-react';
+import { Send, Loader2, MoreVertical, History, Plus, Trash2, Moon, Check } from 'lucide-react';
 import type {
   CurrentUser,
   DashboardContext,
   EvidencePayload,
-  EvidenceResult,
   HistorySession,
   Message,
   ToolCall,
 } from '../types';
-import { chatApi, feedbackApi, historyApi, userApi } from '../services/api';
+import { chatApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
 import { useTheme } from './ThemeProvider';
@@ -26,6 +25,9 @@ import {
 } from './ui/dropdown-menu';
 import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
+import { EvidenceModal } from './EvidenceModal';
+import { FeedbackModal } from './FeedbackModal';
+import { useFeedback } from '../hooks/useFeedback';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
 import flavioAvatar from '../assets/flavio.png';
 
@@ -61,11 +63,6 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
     type: 'tool' | 'kb' | 'vector';
   } | null>(null);
   const [feedbackModal, setFeedbackModal] = useState<{ messageId: string } | null>(null);
-  const [feedbackDrafts, setFeedbackDrafts] = useState<
-    Record<string, { rating: number; comment: string; submitted: boolean }>
-  >({});
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [streamingStatusIndex, setStreamingStatusIndex] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -146,11 +143,14 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
     setMessages((prev) => [...prev, message]);
   }, []);
 
-  const getFeedbackDraft = useCallback(
-    (messageId: string) =>
-      feedbackDrafts[messageId] ?? { rating: 0, comment: '', submitted: false },
-    [feedbackDrafts]
-  );
+  const {
+    getDraft: getFeedbackDraft,
+    updateDraft: updateFeedbackDraft,
+    submitFeedback,
+    error: feedbackError,
+    setError: setFeedbackError,
+    submitting: feedbackSubmitting,
+  } = useFeedback(sessionId);
 
   const mergeEvidence = useCallback((current: EvidencePayload | undefined, incoming: EvidencePayload | undefined) => {
     if (!incoming) {
@@ -681,250 +681,32 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
           </div>
         </SheetContent>
       </Sheet>
-      {evidenceModal && (() => {
-        const selectedMessage = messages.find((msg) => msg.id === evidenceModal.messageId);
-        const title =
-          evidenceModal.type === 'tool'
-            ? 'Tool calls'
-            : evidenceModal.type === 'kb'
-              ? 'KB search'
-              : 'Vector search';
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-[720px] max-h-[80vh] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="text-sm font-semibold">{title}</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close evidence"
-                  onClick={() => setEvidenceModal(null)}
-                >
-                  <X size={16} />
-                </Button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[72vh] space-y-4">
-                {evidenceModal.type === 'tool' && (
-                  <>
-                    {(selectedMessage?.toolCalls || []).length === 0 ? (
-                      <div className="text-sm text-muted-foreground">No tool calls recorded for this response.</div>
-                    ) : (
-                      selectedMessage?.toolCalls?.map((call) => (
-                        <Card key={call.id} className="border border-border">
-                          <CardContent className="space-y-3 p-4">
-                            <div className="text-sm font-semibold">{call.tool}</div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Arguments</div>
-                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                {JSON.stringify(call.arguments, null, 2)}
-                              </pre>
-                            </div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Result</div>
-                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                {JSON.stringify(call.output, null, 2)}
-                              </pre>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </>
-                )}
-                {evidenceModal.type === 'kb' && (
-                  <>
-                    {selectedMessage?.evidence?.kb_search ? (
-                      <EvidenceBlock
-                        title="Query"
-                        value={selectedMessage.evidence.kb_search.query}
-                        results={selectedMessage.evidence.kb_search.results}
-                      />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No KB search results for this response.</div>
-                    )}
-                  </>
-                )}
-                {evidenceModal.type === 'vector' && (
-                  <>
-                    {selectedMessage?.evidence?.vector_search ? (
-                      <EvidenceBlock
-                        title="Query"
-                        value={selectedMessage.evidence.vector_search.query}
-                        results={selectedMessage.evidence.vector_search.results}
-                      />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No vector search results for this response.</div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-      {feedbackModal && (() => {
-        const draft = getFeedbackDraft(feedbackModal.messageId);
-        const submitted = draft.submitted;
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="text-sm font-semibold">Feedback</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close feedback"
-                  onClick={() => setFeedbackModal(null)}
-                >
-                  <X size={16} />
-                </Button>
-              </div>
-              <div className="p-4 space-y-4">
-                {submitted ? (
-                  <div className="text-sm text-muted-foreground">
-                    Thanks! Your feedback has been recorded.
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-2">Usefulness</div>
-                      <div className="flex items-center gap-2">
-                        {Array.from({ length: 5 }, (_, index) => {
-                          const value = index + 1;
-                          const active = value <= draft.rating;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              className={cn(
-                                'h-9 w-9 inline-flex items-center justify-center rounded-md border border-border transition-colors',
-                                active ? 'text-amber-400 border-amber-400' : 'text-muted-foreground'
-                              )}
-                              aria-label={`Rate ${value} star${value === 1 ? '' : 's'}`}
-                              onClick={() =>
-                                setFeedbackDrafts((prev) => ({
-                                  ...prev,
-                                  [feedbackModal.messageId]: {
-                                    ...draft,
-                                    rating: value,
-                                  },
-                                }))
-                              }
-                            >
-                              <Star size={18} className={active ? 'fill-amber-400' : ''} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-2">Notes</div>
-                      <textarea
-                        rows={4}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        placeholder="What was helpful or missing?"
-                        value={draft.comment}
-                        onChange={(event) =>
-                          setFeedbackDrafts((prev) => ({
-                            ...prev,
-                            [feedbackModal.messageId]: {
-                              ...draft,
-                              comment: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                    {feedbackError && <div className="text-sm text-red-400">{feedbackError}</div>}
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" variant="secondary" onClick={() => setFeedbackModal(null)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={feedbackSubmitting || draft.rating === 0}
-                        onClick={async () => {
-                          if (!sessionId) {
-                            setFeedbackError('Session not ready yet. Please try again.');
-                            return;
-                          }
-                          setFeedbackSubmitting(true);
-                          setFeedbackError(null);
-                          try {
-                            await feedbackApi.submit({
-                              session_id: sessionId,
-                              message_id: feedbackModal.messageId,
-                              rating: draft.rating,
-                              comment: draft.comment,
-                            });
-                            setFeedbackDrafts((prev) => ({
-                              ...prev,
-                              [feedbackModal.messageId]: {
-                                ...draft,
-                                submitted: true,
-                              },
-                            }));
-                            setFeedbackModal(null);
-                          } catch (error) {
-                            setFeedbackError(
-                              error instanceof Error ? error.message : 'Failed to submit feedback.'
-                            );
-                          } finally {
-                            setFeedbackSubmitting(false);
-                          }
-                        }}
-                      >
-                        {feedbackSubmitting ? 'Sending...' : 'Send feedback'}
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-function EvidenceBlock({
-  title,
-  value,
-  results,
-}: {
-  title: string;
-  value: string;
-  results: EvidenceResult[];
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <div className="text-xs text-muted-foreground mb-1">{title}</div>
-        <div className="text-sm">{value}</div>
-      </div>
-      <div className="space-y-3">
-        {results.map((result, index) => (
-          <Card key={`${result.path ?? result.id ?? index}`} className="border border-border">
-            <CardContent className="space-y-2 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold">{result.title || result.path || 'Untitled'}</div>
-                {typeof result.score === 'number' && (
-                  <div className="text-xs text-muted-foreground">Score: {result.score.toFixed(2)}</div>
-                )}
-              </div>
-              {result.path && <div className="text-xs text-muted-foreground">{result.path}</div>}
-              {result.excerpt && (
-                <pre className="bg-muted rounded-md p-2 text-xs whitespace-pre-wrap">{result.excerpt}</pre>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {evidenceModal && (
+        <EvidenceModal
+          message={messages.find((msg) => msg.id === evidenceModal.messageId)}
+          type={evidenceModal.type}
+          onClose={() => setEvidenceModal(null)}
+        />
+      )}
+      {feedbackModal && (
+        <FeedbackModal
+          messageId={feedbackModal.messageId}
+          rating={getFeedbackDraft(feedbackModal.messageId).rating}
+          comment={getFeedbackDraft(feedbackModal.messageId).comment}
+          submitted={getFeedbackDraft(feedbackModal.messageId).submitted}
+          submitting={feedbackSubmitting}
+          error={feedbackError}
+          onClose={() => setFeedbackModal(null)}
+          onRate={(value) => updateFeedbackDraft(feedbackModal.messageId, { rating: value })}
+          onComment={(value) => updateFeedbackDraft(feedbackModal.messageId, { comment: value })}
+          onSubmit={async () => {
+            const ok = await submitFeedback(feedbackModal.messageId);
+            if (ok) {
+              setFeedbackModal(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
