@@ -65,7 +65,7 @@ allowed_origin: "https://mon.sabio.cloud"
 # MCP servers (stdio transport - binaries in same directory)
 # Environment variables for each server come from .env file
 mcp_servers:
-  - name: "grafana"
+  - type: "grafana"
     transport: "stdio"
     command: "./mcp-grafana"
     args:
@@ -78,14 +78,14 @@ mcp_servers:
     env:
       GRAFANA_URL: "http://127.0.0.1:3000"
 
-  - name: "alertmanager"
+  - type: "alertmanager"
     transport: "stdio"
     command: "./mcp-alertmanager"
     args: ["-transport", "stdio"]
     env:
       ALERTMANAGER_URL: "http://127.0.0.1:9093"
 
-  - name: "kb"
+  - type: "kb"
     transport: "stdio"
     command: "./mcp-kb"
     args: ["-transport", "stdio"]
