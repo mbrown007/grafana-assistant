@@ -1,17 +1,24 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import type { EvidencePayload, EvidenceResult, Message } from '../types';
+import type { EvidenceResult, Message, TimelineStep } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 
 interface EvidenceModalProps {
   message: Message | undefined;
-  type: 'tool' | 'kb' | 'vector';
+  type: 'tool' | 'kb' | 'vector' | 'timeline';
   onClose: () => void;
 }
 
 export function EvidenceModal({ message, type, onClose }: EvidenceModalProps) {
-  const title = type === 'tool' ? 'Tool calls' : type === 'kb' ? 'KB search' : 'Vector search';
+  const title =
+    type === 'tool'
+      ? 'Tool calls'
+      : type === 'kb'
+        ? 'KB search'
+        : type === 'vector'
+          ? 'Vector search'
+          : 'Response timeline';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -32,6 +39,12 @@ export function EvidenceModal({ message, type, onClose }: EvidenceModalProps) {
                   <Card key={call.id} className="border border-border">
                     <CardContent className="space-y-3 p-4">
                       <div className="text-sm font-semibold">{call.tool}</div>
+                      {call.reason && (
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">Why this tool</div>
+                          <div className="text-xs whitespace-pre-wrap">{call.reason}</div>
+                        </div>
+                      )}
                       <div>
                         <div className="text-xs text-muted-foreground mb-1">Arguments</div>
                         <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
@@ -76,10 +89,82 @@ export function EvidenceModal({ message, type, onClose }: EvidenceModalProps) {
               )}
             </>
           )}
+          {type === 'timeline' && (
+            <>
+              {(message?.timeline || []).length === 0 ? (
+                <div className="text-sm text-muted-foreground">No timeline events recorded for this response.</div>
+              ) : (
+                <div className="space-y-3">
+                  {[...(message?.timeline || [])]
+                    .sort((a, b) => a.order - b.order)
+                    .map((step) => (
+                      <Card key={step.id} className="border border-border">
+                        <CardContent className="space-y-2 p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold">{step.title}</div>
+                            <div className="text-xs text-muted-foreground">{formatTimelineTimestamp(step.timestamp)}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${timelineStatusClass(
+                                step.status
+                              )}`}
+                            >
+                              {timelineKindLabel(step)}
+                            </span>
+                          </div>
+                          {step.detail && <div className="text-xs text-muted-foreground whitespace-pre-wrap">{step.detail}</div>}
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function timelineKindLabel(step: TimelineStep): string {
+  switch (step.kind) {
+    case 'start':
+      return 'Start';
+    case 'tool_call':
+      return 'Tool call';
+    case 'retry':
+      return 'Retry';
+    case 'tool_result':
+      return 'Tool result';
+    case 'final_answer':
+      return 'Final answer';
+    case 'error':
+      return 'Error';
+    default:
+      return 'Event';
+  }
+}
+
+function timelineStatusClass(status: TimelineStep['status']): string {
+  switch (status) {
+    case 'ok':
+      return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300';
+    case 'warning':
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-300';
+    case 'error':
+      return 'bg-red-500/15 text-red-700 dark:text-red-300';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
+}
+
+function formatTimelineTimestamp(timestamp: string): string {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+  return parsed.toLocaleTimeString();
 }
 
 function EvidenceBlock({

@@ -88,6 +88,38 @@ var (
 		[]string{"model", "direction"},
 	)
 
+	PromptChars = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_chars",
+			Help:    "Character length of system prompt sent per chat request.",
+			Buckets: []float64{256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536},
+		},
+	)
+
+	PromptToolCount = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_tool_count",
+			Help:    "Number of tools exposed to the LLM per chat request.",
+			Buckets: []float64{0, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192},
+		},
+	)
+
+	RequestBudgetTripsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assistant_request_budget_trips_total",
+			Help: "Total number of request budget guardrail trips.",
+		},
+		[]string{"reason"},
+	)
+
+	RequestBudgetEstimatedCostUSD = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assistant_request_budget_estimated_cost_usd",
+			Help:    "Estimated per-request LLM cost (USD) observed during tool loop iterations.",
+			Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1},
+		},
+	)
+
 	MCPToolCallsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "assistant_mcp_tool_calls_total",
@@ -126,6 +158,10 @@ func init() {
 		LLMRequestsTotal,
 		LLMRequestDuration,
 		LLMTokensTotal,
+		PromptChars,
+		PromptToolCount,
+		RequestBudgetTripsTotal,
+		RequestBudgetEstimatedCostUSD,
 		MCPToolCallsTotal,
 		MCPToolCallDuration,
 		ErrorsTotal,

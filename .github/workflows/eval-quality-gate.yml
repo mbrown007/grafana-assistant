@@ -1,0 +1,210 @@
+name: Eval Quality Gate
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Maximum baseline cases to run (0 = all)"
+        required: false
+        default: "12"
+      min_pass_rate:
+        description: "Minimum judge aggregate pass rate (0..1)"
+        required: false
+        default: "0.85"
+      max_hallucination_hard_failures:
+        description: "Maximum hallucination hard failures"
+        required: false
+        default: "0"
+      max_guard_failed_cases:
+        description: "Maximum guard failed cases"
+        required: false
+        default: "0"
+      max_guard_violations_total:
+        description: "Maximum guard total violations"
+        required: false
+        default: "0"
+      max_judge_error_cases:
+        description: "Maximum judge case-level errors"
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+jobs:
+  eval-quality-gate:
+    name: Eval Quality Gate
+    # Secrets are unavailable for fork PRs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ASSISTANT_OPENAI_API_KEY: ${{ secrets.ASSISTANT_OPENAI_API_KEY }}
+      ASSISTANT_OPENAI_MODEL: ${{ vars.ASSISTANT_OPENAI_MODEL || 'gpt-4o-mini' }}
+      EVAL_LIMIT: ${{ github.event.inputs.limit || vars.ASSISTANT_EVAL_LIMIT || '12' }}
+      EVAL_MIN_PASS_RATE: ${{ github.event.inputs.min_pass_rate || vars.ASSISTANT_EVAL_MIN_PASS_RATE || '0.85' }}
+      EVAL_MAX_HALLUCINATION_HARD_FAILURES: ${{ github.event.inputs.max_hallucination_hard_failures || vars.ASSISTANT_EVAL_MAX_HALLUCINATION_HARD_FAILURES || '0' }}
+      EVAL_MAX_GUARD_FAILED_CASES: ${{ github.event.inputs.max_guard_failed_cases || vars.ASSISTANT_EVAL_MAX_GUARD_FAILED_CASES || '0' }}
+      EVAL_MAX_GUARD_VIOLATIONS_TOTAL: ${{ github.event.inputs.max_guard_violations_total || vars.ASSISTANT_EVAL_MAX_GUARD_VIOLATIONS_TOTAL || '0' }}
+      EVAL_MAX_JUDGE_ERROR_CASES: ${{ github.event.inputs.max_judge_error_cases || vars.ASSISTANT_EVAL_MAX_JUDGE_ERROR_CASES || '0' }}
+      ASSISTANT_FEATURE_JUDGE_GATE_MODE: ${{ vars.ASSISTANT_FEATURE_JUDGE_GATE_MODE || 'true' }}
+      EVAL_OUT_DIR: tests/evals/results/ci-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Verify eval prerequisites
+        run: |
+          if [[ -z "${ASSISTANT_OPENAI_API_KEY:-}" ]]; then
+            echo "ASSISTANT_OPENAI_API_KEY secret is required for eval quality gate." >&2
+            exit 1
+          fi
+          if [[ ! -f "config.yaml" ]]; then
+            echo "config.yaml is required for CI eval run (assistant startup)." >&2
+            exit 1
+          fi
+          mkdir -p "${EVAL_OUT_DIR}"
+
+      - name: Build assistant + MCP servers
+        run: make build mcp-build
+
+      - name: Start docker dependencies
+        run: make docker-up
+
+      - name: Start MCP servers
+        run: make mcp-start
+
+      - name: Start assistant
+        run: |
+          ASSISTANT_OPENAI_API_KEY="${ASSISTANT_OPENAI_API_KEY}" \
+          ASSISTANT_OPENAI_MODEL="${ASSISTANT_OPENAI_MODEL}" \
+          ./bin/assistant -config config.yaml > "${EVAL_OUT_DIR}/assistant.log" 2>&1 &
+          echo $! > "${EVAL_OUT_DIR}/assistant.pid"
+
+      - name: Wait for assistant health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "http://localhost:8081/healthz" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "assistant did not become healthy in time; showing assistant log tail" >&2
+          if [[ -f "${EVAL_OUT_DIR}/assistant.log" ]]; then
+            tail -n 120 "${EVAL_OUT_DIR}/assistant.log" >&2 || true
+          fi
+          exit 1
+
+      - name: Create Grafana session cookie
+        run: |
+          cookie_jar="${RUNNER_TEMP}/grafana-cookie.txt"
+          login_payload='{"user":"admin","password":"admin"}'
+
+          # Prefer subpath login endpoint used by dev-test Grafana.
+          if ! curl -fsS -c "${cookie_jar}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "${login_payload}" \
+            "http://localhost:13000/grafana/login" >/dev/null; then
+            curl -fsS -c "${cookie_jar}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d "${login_payload}" \
+              "http://localhost:13000/login" >/dev/null
+          fi
+
+          session_value="$(awk '$6=="grafana_session" {print $7}' "${cookie_jar}" | tail -n1)"
+          if [[ -z "${session_value}" ]]; then
+            echo "failed to create Grafana session cookie for baseline eval auth" >&2
+            echo "cookie jar contents:" >&2
+            cat "${cookie_jar}" >&2 || true
+            exit 1
+          fi
+
+          echo "::add-mask::${session_value}"
+          echo "ASSISTANT_COOKIE=grafana_session=${session_value}" >> "${GITHUB_ENV}"
+
+      - name: Run baseline eval
+        id: baseline
+        run: |
+          ASSISTANT_COOKIE="${ASSISTANT_COOKIE}" \
+            ./scripts/eval_baseline.sh \
+            --out-dir "${EVAL_OUT_DIR}" \
+            --limit "${EVAL_LIMIT}" \
+            --timeout 90 \
+            --delay-ms 75
+          baseline_report="$(ls -1t "${EVAL_OUT_DIR}"/baseline-*.json | head -n1)"
+          if [[ -z "${baseline_report}" ]]; then
+            echo "baseline report not found" >&2
+            exit 1
+          fi
+          echo "baseline_report=${baseline_report}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run judge scoring
+        run: |
+          ./scripts/eval_judge.sh \
+            --run-artifact "${{ steps.baseline.outputs.baseline_report }}" \
+            --out "${EVAL_OUT_DIR}/judge.json" \
+            --timeout 90 \
+            --delay-ms 75 \
+            --max-completion-tokens 1200
+
+      - name: Run deterministic guards
+        run: |
+          ./scripts/eval_guard.sh \
+            --run-artifact "${{ steps.baseline.outputs.baseline_report }}" \
+            --out "${EVAL_OUT_DIR}/guard.json" \
+            --allow-failures
+
+      - name: Enforce quality gate thresholds
+        run: |
+          ./scripts/eval_quality_gate.sh \
+            --judge-report "${EVAL_OUT_DIR}/judge.json" \
+            --guard-report "${EVAL_OUT_DIR}/guard.json" \
+            --out "${EVAL_OUT_DIR}/quality-gate.json" \
+            --summary-md "${EVAL_OUT_DIR}/quality-gate.md" \
+            --judge-gate-mode "${ASSISTANT_FEATURE_JUDGE_GATE_MODE}" \
+            --min-pass-rate "${EVAL_MIN_PASS_RATE}" \
+            --max-hallucination-hard-failures "${EVAL_MAX_HALLUCINATION_HARD_FAILURES}" \
+            --max-guard-failed-cases "${EVAL_MAX_GUARD_FAILED_CASES}" \
+            --max-guard-violations-total "${EVAL_MAX_GUARD_VIOLATIONS_TOTAL}" \
+            --max-judge-error-cases "${EVAL_MAX_JUDGE_ERROR_CASES}"
+
+      - name: Publish gate summary
+        if: always()
+        run: |
+          if [[ -f "${EVAL_OUT_DIR}/quality-gate.md" ]]; then
+            cat "${EVAL_OUT_DIR}/quality-gate.md" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-quality-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.EVAL_OUT_DIR }}/
+            .mcp-alertmanager.log
+            .mcp-grafana.log
+            .mcp-genesyscloud.log
+            .mcp-kb.log
+          if-no-files-found: warn
+
+      - name: Cleanup services
+        if: always()
+        run: |
+          if [[ -f "${EVAL_OUT_DIR}/assistant.pid" ]]; then
+            kill "$(cat "${EVAL_OUT_DIR}/assistant.pid")" 2>/dev/null || true
+          fi
+          make mcp-stop || true
+          make docker-down || true

@@ -103,6 +103,23 @@ The three MCP servers and their default ports:
 | Genesys Cloud | 8002 | Queue volumes, conversations, OAuth clients |
 | KB | 8003 | KB search and section retrieval |
 
+By default, `make mcp-start` launches Grafana MCP with a read-focused tool profile:
+- Enabled categories: `search,datasource,prometheus,loki,alerting,dashboard,navigation`
+- Disabled by default: write tools (`--disable-write`) and admin tools (`--disable-admin`)
+
+Override for local experimentation:
+```bash
+GRAFANA_MCP_ENABLED_TOOLS="search,datasource,prometheus,loki,alerting,dashboard,navigation,rendering" \
+GRAFANA_MCP_EXTRA_FLAGS="--disable-write=false --disable-admin=false" \
+make mcp-start
+```
+
+Per-server tool filtering is also available in assistant config (`mcp_servers` entries):
+- `tool_allowlist`: only these tool names are exposed to the model
+- `tool_denylist`: these tool names are always blocked (takes precedence)
+
+Tool names can be provided as either full (`grafana__query_prometheus`) or short (`query_prometheus`) form.
+
 Servers that fail to connect at startup are skipped -- the assistant still works without them.
 
 If you want the assistant to spawn MCP servers via stdio (recommended for single-host installs),

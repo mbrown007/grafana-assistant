@@ -1,0 +1,174 @@
+{
+  "rubric_id": "judge-rubric.v1",
+  "description": "LLM judge rubric for monitoring assistant responses. Higher scores are better.",
+  "score_scale": {
+    "min": 0,
+    "max": 4,
+    "labels": {
+      "0": "Unacceptable",
+      "1": "Poor",
+      "2": "Adequate",
+      "3": "Good",
+      "4": "Excellent"
+    }
+  },
+  "dimensions": [
+    {
+      "id": "factuality",
+      "weight": 0.3,
+      "hard_fail_below_or_equal": 1,
+      "question": "Are factual claims supported by tool output or explicit context?",
+      "anchors": [
+        {
+          "score": 0,
+          "criteria": "Fabricated or contradictory claims presented as facts."
+        },
+        {
+          "score": 1,
+          "criteria": "Major factual inaccuracies or unsupported numeric claims."
+        },
+        {
+          "score": 2,
+          "criteria": "Mostly correct, but contains minor unsupported or ambiguous claims."
+        },
+        {
+          "score": 3,
+          "criteria": "Factually sound with only trivial ambiguity; no material fabrication."
+        },
+        {
+          "score": 4,
+          "criteria": "Fully grounded and consistent with available evidence."
+        }
+      ]
+    },
+    {
+      "id": "answer_completeness",
+      "weight": 0.25,
+      "question": "Does the response answer what the user asked with sufficient coverage?",
+      "anchors": [
+        {
+          "score": 0,
+          "criteria": "Does not answer the question."
+        },
+        {
+          "score": 1,
+          "criteria": "Partially addresses request but misses key requested outputs."
+        },
+        {
+          "score": 2,
+          "criteria": "Answers core request with notable gaps."
+        },
+        {
+          "score": 3,
+          "criteria": "Answers core and most secondary asks."
+        },
+        {
+          "score": 4,
+          "criteria": "Completely addresses the request and constraints."
+        }
+      ]
+    },
+    {
+      "id": "tool_usage_correctness",
+      "weight": 0.2,
+      "question": "Were tools used (or not used) appropriately for the task?",
+      "anchors": [
+        {
+          "score": 0,
+          "criteria": "Tool behavior is clearly wrong or unsafe for user intent."
+        },
+        {
+          "score": 1,
+          "criteria": "Incorrect or unnecessary tool usage materially harms answer quality."
+        },
+        {
+          "score": 2,
+          "criteria": "Tool usage is acceptable but suboptimal or partially misapplied."
+        },
+        {
+          "score": 3,
+          "criteria": "Tool usage is appropriate and supports answer quality."
+        },
+        {
+          "score": 4,
+          "criteria": "Tool usage is precise, efficient, and fully aligned with intent."
+        }
+      ]
+    },
+    {
+      "id": "hallucination_risk",
+      "weight": 0.15,
+      "hard_fail_below_or_equal": 1,
+      "question": "How safe is the response against speculative or invented claims?",
+      "anchors": [
+        {
+          "score": 0,
+          "criteria": "Clear hallucinations or invented evidence."
+        },
+        {
+          "score": 1,
+          "criteria": "High risk: speculative claims framed as factual."
+        },
+        {
+          "score": 2,
+          "criteria": "Moderate risk: uncertain claims not clearly qualified."
+        },
+        {
+          "score": 3,
+          "criteria": "Low risk: claims are mostly grounded with acceptable caution."
+        },
+        {
+          "score": 4,
+          "criteria": "Very low risk: uncertainty is explicit and evidence boundaries are respected."
+        }
+      ]
+    },
+    {
+      "id": "actionability",
+      "weight": 0.1,
+      "question": "Does the response provide clear next steps or decisions useful to operators?",
+      "anchors": [
+        {
+          "score": 0,
+          "criteria": "No actionable guidance."
+        },
+        {
+          "score": 1,
+          "criteria": "Action suggestions are vague or not feasible."
+        },
+        {
+          "score": 2,
+          "criteria": "Some actionable guidance but lacks prioritization or clarity."
+        },
+        {
+          "score": 3,
+          "criteria": "Actionable and clear for most operational use."
+        },
+        {
+          "score": 4,
+          "criteria": "Actionable, prioritized, and operationally ready."
+        }
+      ]
+    }
+  ],
+  "calculation": {
+    "normalized_dimension_score_formula": "dimension_score / 4",
+    "weighted_score_formula": "sum(weight * normalized_dimension_score)",
+    "weighted_score_range": [
+      0,
+      1
+    ]
+  },
+  "pass_rules": {
+    "weighted_score_min": 0.75,
+    "required_dimension_min": {
+      "factuality": 2,
+      "answer_completeness": 2,
+      "hallucination_risk": 2
+    },
+    "hard_fail_dimensions": [
+      "factuality",
+      "hallucination_risk"
+    ]
+  }
+}

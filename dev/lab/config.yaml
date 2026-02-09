@@ -29,6 +29,20 @@ audit_log_path: "data/audit.log"
 
 # OpenAI (set via environment variable: ASSISTANT_OPENAI_API_KEY)
 openai_model: "gpt-4o"
+model_profile:
+  default: "balanced"
+  family_overrides:
+    gpt-4o-mini: compact
+
+# Per-request budget guardrails
+request_budget:
+  max_prompt_tokens: 12000
+  max_completion_tokens: 4000
+  max_tool_iterations: 5
+  max_tool_calls: 12
+  max_estimated_cost_usd: 0.10
+  prompt_cost_per_1m_usd: 0.80
+  completion_cost_per_1m_usd: 3.20
 
 # Knowledge base
 kb_path: "KB"
@@ -37,6 +51,13 @@ kb_max_section_chars: 2000
 
 # Metrics
 metrics_enabled: true
+
+# Runtime feature flags
+feature_flags:
+  routing_mode: true
+  composite_tool_mode: true
+  judge_gate_mode: true
+  evidence_redaction_mode: true
 
 # Security - allow requests from HAProxy frontend
 allowed_origin: "https://mon.sabio.cloud"
@@ -47,7 +68,13 @@ mcp_servers:
   - name: "grafana"
     transport: "stdio"
     command: "./mcp-grafana"
-    args: ["-transport", "stdio"]
+    args:
+      - "-transport"
+      - "stdio"
+      - "--enabled-tools"
+      - "search,datasource,prometheus,loki,alerting,dashboard,navigation"
+      - "--disable-write"
+      - "--disable-admin"
     env:
       GRAFANA_URL: "http://127.0.0.1:3000"
 

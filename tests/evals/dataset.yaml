@@ -1,0 +1,809 @@
+{
+  "version": "1.0",
+  "created_at": "2026-02-07",
+  "description": "Baseline evaluation dataset for monitoring assistant quality checks. Stored as JSON content at a .yaml path for tooling compatibility.",
+  "defaults": {
+    "dashboard_context": {
+      "name": "Monitoring Assistant",
+      "time_range": {
+        "from": "now-6h",
+        "to": "now"
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "DSH-001",
+      "category": "dashboard_summary",
+      "message": "Summarize what this dashboard shows in five bullets for an on-call handoff.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Summarizes key dashboard areas",
+          "Mentions current time range",
+          "Uses concise operational language"
+        ],
+        "tool_usage_notes": [
+          "Can use dashboard context first",
+          "May call grafana__query_prometheus for current values"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "DSH-002",
+      "category": "dashboard_summary",
+      "message": "Which two panels matter most for service health and why?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Selects top panels and explains signal value",
+          "Avoids vague recommendations",
+          "Keeps reasoning tied to panel purpose"
+        ],
+        "tool_usage_notes": [
+          "Should rely on panel/query context",
+          "Tool call optional if data confidence needed"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "DSH-003",
+      "category": "dashboard_summary",
+      "message": "Give me a quick executive summary of this dashboard for the last six hours.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "High-level health summary",
+          "Includes risk callouts",
+          "No fabricated metric values"
+        ],
+        "tool_usage_notes": [
+          "Should use current dashboard time range",
+          "May use grafana__query_prometheus"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "DSH-004",
+      "category": "dashboard_summary",
+      "message": "List the three weakest spots in this dashboard right now and what I should check next.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Highlights likely weak spots",
+          "Includes next-step checks",
+          "Actionable not generic"
+        ],
+        "tool_usage_notes": [
+          "Should query supporting data when tools available",
+          "Could use grafana__query_loki for corroborating logs"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus",
+          "grafana__query_loki"
+        ]
+      }
+    },
+    {
+      "id": "DSH-005",
+      "category": "dashboard_summary",
+      "message": "Translate this dashboard into plain English for a new engineer.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Explains panel intent in simple terms",
+          "Avoids heavy jargon",
+          "Preserves technical correctness"
+        ],
+        "tool_usage_notes": [
+          "Primarily contextual explanation",
+          "No mandatory live query"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "DSH-006",
+      "category": "dashboard_summary",
+      "message": "Are there any blind spots on this dashboard for incident triage?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Identifies missing signals",
+          "Suggests improvements",
+          "Connects to incident workflow"
+        ],
+        "tool_usage_notes": [
+          "Can reason from panel inventory",
+          "Optional schema checks for missing metrics"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "DSH-007",
+      "category": "dashboard_summary",
+      "message": "What changed most across panels compared to normal behavior?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Calls out notable shifts",
+          "Avoids overclaiming without data",
+          "Provides confidence level if uncertain"
+        ],
+        "tool_usage_notes": [
+          "Should call live metrics when possible",
+          "May use table artifact for ranked changes"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "DSH-008",
+      "category": "dashboard_summary",
+      "message": "If I only have two minutes, what should I read on this page first?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Prioritizes fastest signal checks",
+          "Provides ordered reading path",
+          "Stays concise"
+        ],
+        "tool_usage_notes": [
+          "Can be answered from context",
+          "Live query optional"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "ANO-001",
+      "category": "anomaly_detection",
+      "message": "Call out anomalies in the current range and rank them by risk.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Returns ranked anomaly list",
+          "Includes risk rationale",
+          "Avoids hallucinated values"
+        ],
+        "tool_usage_notes": [
+          "Should query metrics first",
+          "Artifact table or report preferred"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "ANO-002",
+      "category": "anomaly_detection",
+      "message": "Do you see an unusual latency spike pattern in this view?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Assesses spike pattern",
+          "Mentions magnitude and timing if available",
+          "States uncertainty clearly if data missing"
+        ],
+        "tool_usage_notes": [
+          "Should use prometheus query when tools available",
+          "Can suggest follow-up log query"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus",
+          "grafana__query_loki"
+        ]
+      }
+    },
+    {
+      "id": "ANO-003",
+      "category": "anomaly_detection",
+      "message": "Which service looks most unstable right now?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Identifies unstable service candidate",
+          "References instability signals",
+          "Provides short verification step"
+        ],
+        "tool_usage_notes": [
+          "Should use live data tool calls",
+          "May use log query to corroborate"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "ANO-004",
+      "category": "anomaly_detection",
+      "message": "Is this error increase broad or isolated to one dimension?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Distinguishes broad vs isolated impact",
+          "Mentions likely dimension split",
+          "Recommends next slicing step"
+        ],
+        "tool_usage_notes": [
+          "Should use grouped query strategy",
+          "Optional follow-up with label metadata"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus",
+          "grafana__list_prometheus_label_values"
+        ]
+      }
+    },
+    {
+      "id": "ANO-005",
+      "category": "anomaly_detection",
+      "message": "Show me suspicious log patterns linked to this spike.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Finds candidate log patterns",
+          "Links patterns back to metric symptom",
+          "Keeps output actionable"
+        ],
+        "tool_usage_notes": [
+          "Should query Loki",
+          "Pattern/stat tools are preferred if available"
+        ],
+        "expected_tools": [
+          "grafana__query_loki"
+        ]
+      }
+    },
+    {
+      "id": "ANO-006",
+      "category": "anomaly_detection",
+      "message": "Are we seeing a sustained issue or a short blip?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Classifies sustained vs transient",
+          "Uses range context",
+          "Proposes monitor threshold follow-up"
+        ],
+        "tool_usage_notes": [
+          "Should inspect time-series continuity",
+          "Prometheus query expected for confidence"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "ANO-007",
+      "category": "anomaly_detection",
+      "message": "Find anything that deviates from baseline behavior in this dashboard.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Calls out baseline deviations",
+          "Includes at least one verification path",
+          "Does not overstate confidence"
+        ],
+        "tool_usage_notes": [
+          "Should query live data",
+          "Can request additional baseline period if needed"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "ANO-008",
+      "category": "anomaly_detection",
+      "message": "Create a quick anomaly triage checklist from what you see.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Produces checklist format",
+          "Prioritizes high-impact checks first",
+          "References visible signals"
+        ],
+        "tool_usage_notes": [
+          "Can answer from context and/or recent tool calls",
+          "No mandatory extra tools"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "QRY-001",
+      "category": "query_help",
+      "message": "Write a PromQL query for 5xx error rate by service over the last 30 minutes.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Provides syntactically valid PromQL",
+          "Uses rate/increase appropriately",
+          "Includes grouping by service"
+        ],
+        "tool_usage_notes": [
+          "Should use schema/label discovery before final query when possible",
+          "Should return explanation of query intent"
+        ],
+        "expected_tools": [
+          "grafana__list_prometheus_metric_names",
+          "grafana__list_prometheus_label_names"
+        ]
+      }
+    },
+    {
+      "id": "QRY-002",
+      "category": "query_help",
+      "message": "Fix this query and explain the bug: sum(rate(http_requests_total{status=~\"5..\"}[5m])) by ()",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Identifies aggregation bug",
+          "Returns corrected query",
+          "Explains why correction works"
+        ],
+        "tool_usage_notes": [
+          "May run validation query",
+          "No fabricated results"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "QRY-003",
+      "category": "query_help",
+      "message": "Give me a LogQL query to isolate timeout errors for checkout.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Provides LogQL syntax with filters",
+          "Scopes to checkout and timeout terms",
+          "Optionally includes count/rate variant"
+        ],
+        "tool_usage_notes": [
+          "Should use Loki label metadata if available",
+          "Can provide both logs and metric query variants"
+        ],
+        "expected_tools": [
+          "grafana__list_loki_label_names",
+          "grafana__query_loki"
+        ]
+      }
+    },
+    {
+      "id": "QRY-004",
+      "category": "query_help",
+      "message": "I need P95 latency by route. Build query and suggest panel type.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Uses histogram quantile pattern correctly",
+          "Includes grouping by route",
+          "Suggests suitable panel type"
+        ],
+        "tool_usage_notes": [
+          "Schema checks recommended",
+          "May call explore__open for ad-hoc graph"
+        ],
+        "expected_tools": [
+          "grafana__list_prometheus_metric_names",
+          "explore__open"
+        ]
+      }
+    },
+    {
+      "id": "QRY-005",
+      "category": "query_help",
+      "message": "Why is 'sum before rate' risky here? Show corrected form.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Explains sum-before-rate pitfall",
+          "Provides corrected query structure",
+          "Uses clear concise explanation"
+        ],
+        "tool_usage_notes": [
+          "Contextual explanation, tool optional",
+          "Should align with Prometheus best practices"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "QRY-006",
+      "category": "query_help",
+      "message": "Write a query to compare current traffic to the same hour yesterday.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Includes offset usage",
+          "Shows comparison pattern",
+          "Mentions caveats and alignment"
+        ],
+        "tool_usage_notes": [
+          "Can use metadata lookup first",
+          "No invented numbers"
+        ],
+        "expected_tools": [
+          "grafana__list_prometheus_metric_names"
+        ]
+      }
+    },
+    {
+      "id": "QRY-007",
+      "category": "query_help",
+      "message": "Generate a topk query for hottest endpoints by error volume.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Uses topk with correct aggregation",
+          "Targets endpoint dimension",
+          "Suggests sensible window"
+        ],
+        "tool_usage_notes": [
+          "Schema checks preferred",
+          "May include alternate by service version"
+        ],
+        "expected_tools": [
+          "grafana__list_prometheus_label_names"
+        ]
+      }
+    },
+    {
+      "id": "QRY-008",
+      "category": "query_help",
+      "message": "Open Explore with a query that validates suspected saturation.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Provides or opens targeted saturation query",
+          "Includes short validation guidance",
+          "Returns explore URL if tool used"
+        ],
+        "tool_usage_notes": [
+          "Should call explore__open",
+          "May also use prometheus query tool"
+        ],
+        "expected_tools": [
+          "explore__open"
+        ]
+      }
+    },
+    {
+      "id": "INC-001",
+      "category": "incident_response",
+      "message": "We have a checkout outage. Give me a first 10-minute triage plan.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Provides step-by-step triage plan",
+          "Prioritizes impact and blast radius",
+          "Includes verification checkpoints"
+        ],
+        "tool_usage_notes": [
+          "Should inspect alerts and key metrics",
+          "May query logs for immediate signatures"
+        ],
+        "expected_tools": [
+          "alertmanager__list_alerts",
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "INC-002",
+      "category": "incident_response",
+      "message": "Summarize active alerts and identify likely primary symptom.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Summarizes active alert set",
+          "Distinguishes symptom vs cause when possible",
+          "Calls out uncertainty explicitly"
+        ],
+        "tool_usage_notes": [
+          "Should call alert list tool",
+          "Can correlate with metrics query"
+        ],
+        "expected_tools": [
+          "alertmanager__list_alerts",
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "INC-003",
+      "category": "incident_response",
+      "message": "Draft an incident update for stakeholders from current telemetry.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Produces concise stakeholder update",
+          "Includes impact, status, next update time",
+          "Avoids speculative claims"
+        ],
+        "tool_usage_notes": [
+          "Should gather live signals before drafting",
+          "May include confidence caveats"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "INC-004",
+      "category": "incident_response",
+      "message": "What should I check first to decide rollback vs mitigation?",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Defines rollback decision signals",
+          "Defines mitigation decision signals",
+          "Provides fast decision tree"
+        ],
+        "tool_usage_notes": [
+          "Should query error/latency/saturation signals",
+          "Can reference deployment markers if available"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "INC-005",
+      "category": "incident_response",
+      "message": "Find evidence for whether this is dependency failure or app regression.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Presents evidence for both hypotheses",
+          "States most likely scenario",
+          "Lists decisive next probe"
+        ],
+        "tool_usage_notes": [
+          "Should combine metrics and logs",
+          "May include upstream/downstream checks"
+        ],
+        "expected_tools": [
+          "grafana__query_prometheus",
+          "grafana__query_loki"
+        ]
+      }
+    },
+    {
+      "id": "INC-006",
+      "category": "incident_response",
+      "message": "Give me containment actions I can do in the next 15 minutes.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Lists practical containment actions",
+          "Prioritizes low-risk/high-impact actions",
+          "Includes verification for each action"
+        ],
+        "tool_usage_notes": [
+          "Can be mostly procedural",
+          "Optional metric checks for validation"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "INC-007",
+      "category": "incident_response",
+      "message": "Propose a root-cause hypothesis tree from current evidence.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Builds hypothesis tree structure",
+          "Maps each branch to confirming signals",
+          "Keeps assumptions explicit"
+        ],
+        "tool_usage_notes": [
+          "Should use current alert and metric context",
+          "Could include targeted log checks"
+        ],
+        "expected_tools": [
+          "alertmanager__list_alerts",
+          "grafana__query_prometheus"
+        ]
+      }
+    },
+    {
+      "id": "INC-008",
+      "category": "incident_response",
+      "message": "Create an immediate post-incident follow-up checklist from this event.",
+      "use_default_dashboard_context": true,
+      "expected": {
+        "answer_notes": [
+          "Checklist includes timeline, root cause, and prevention tasks",
+          "Separates immediate and longer-term items",
+          "Mentions ownership/actionability"
+        ],
+        "tool_usage_notes": [
+          "Can answer from session context",
+          "No mandatory live query"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "DOC-001",
+      "category": "docs_runbook",
+      "message": "How do we investigate sudden queue growth in Genesys Cloud metrics?",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Uses runbook-style troubleshooting sequence",
+          "References likely metric families",
+          "Includes escalation criteria"
+        ],
+        "tool_usage_notes": [
+          "Should use KB retrieval tools when available",
+          "Can combine with schema discovery"
+        ],
+        "expected_tools": [
+          "kb__search_kb",
+          "kb__search_kb_semantic"
+        ]
+      }
+    },
+    {
+      "id": "DOC-002",
+      "category": "docs_runbook",
+      "message": "What is the difference between token and vector KB search in this assistant?",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Explains retrieval differences clearly",
+          "Mentions when each is preferred",
+          "Keeps explanation concise"
+        ],
+        "tool_usage_notes": [
+          "May answer from built-in knowledge",
+          "Optional KB lookup for precise wording"
+        ],
+        "expected_tools": []
+      }
+    },
+    {
+      "id": "DOC-003",
+      "category": "docs_runbook",
+      "message": "Give me the recommended steps to validate alert noise before changing thresholds.",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Includes validation before threshold changes",
+          "Mentions false-positive analysis",
+          "Calls out rollback/safety"
+        ],
+        "tool_usage_notes": [
+          "Should use KB/runbook retrieval where possible",
+          "Could include alert query references"
+        ],
+        "expected_tools": [
+          "kb__search_kb"
+        ]
+      }
+    },
+    {
+      "id": "DOC-004",
+      "category": "docs_runbook",
+      "message": "Explain our best practice for rate-before-sum in PromQL with an example.",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Explains principle correctly",
+          "Provides clear good/bad query example",
+          "Connects to counter reset behavior"
+        ],
+        "tool_usage_notes": [
+          "Can use KB policy docs",
+          "No mandatory live metric query"
+        ],
+        "expected_tools": [
+          "kb__search_kb"
+        ]
+      }
+    },
+    {
+      "id": "DOC-005",
+      "category": "docs_runbook",
+      "message": "How should we document evidence during a sev-1 incident?",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Covers timeline, hypothesis, actions, and outcomes",
+          "Promotes reproducible evidence capture",
+          "Includes ownership and timestamps"
+        ],
+        "tool_usage_notes": [
+          "KB retrieval preferred for team policy",
+          "No required live tools"
+        ],
+        "expected_tools": [
+          "kb__search_kb_semantic"
+        ]
+      }
+    },
+    {
+      "id": "DOC-006",
+      "category": "docs_runbook",
+      "message": "Show a runbook outline for persistent high error rate incidents.",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Provides practical runbook outline",
+          "Includes diagnostics and mitigation sections",
+          "Includes recovery validation"
+        ],
+        "tool_usage_notes": [
+          "Should retrieve from runbook KB if present",
+          "No mandatory live tools"
+        ],
+        "expected_tools": [
+          "kb__search_kb"
+        ]
+      }
+    },
+    {
+      "id": "DOC-007",
+      "category": "docs_runbook",
+      "message": "What should junior responders do first when dashboards disagree?",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Provides safe-first responder checklist",
+          "Emphasizes validation and cross-checking",
+          "Includes escalation triggers"
+        ],
+        "tool_usage_notes": [
+          "Can use KB docs",
+          "Optional metadata checks"
+        ],
+        "expected_tools": [
+          "kb__search_kb_semantic"
+        ]
+      }
+    },
+    {
+      "id": "DOC-008",
+      "category": "docs_runbook",
+      "message": "Create a concise SOP for triaging latency regressions after deployment.",
+      "use_default_dashboard_context": false,
+      "expected": {
+        "answer_notes": [
+          "Produces SOP structure",
+          "Includes deploy correlation checks",
+          "Defines exit criteria"
+        ],
+        "tool_usage_notes": [
+          "KB/runbook retrieval preferred",
+          "No required live tool calls"
+        ],
+        "expected_tools": [
+          "kb__search_kb"
+        ]
+      }
+    }
+  ]
+}
