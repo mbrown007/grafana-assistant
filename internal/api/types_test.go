@@ -120,13 +120,52 @@ func TestStreamChunk_Tool(t *testing.T) {
 	const input = `{
 		"type": "tool",
 		"tool": "alertmanager__list_alerts",
+		"reason": "Check active alert state for the current incident.",
 		"arguments": {"state": "active"}
 	}`
 	roundTrip[StreamChunk](t, input, func(c StreamChunk) {
 		assertEqual(t, "type", c.Type, "tool")
 		assertEqual(t, "tool", c.Tool, "alertmanager__list_alerts")
+		assertEqual(t, "reason", c.Reason, "Check active alert state for the current incident.")
 		if c.Arguments["state"] != "active" {
 			t.Errorf("arguments.state = %v, want %q", c.Arguments["state"], "active")
+		}
+	})
+}
+
+func TestStreamChunk_ToolWithResultObject(t *testing.T) {
+	const input = `{
+		"type": "tool",
+		"tool": "grafana__query_prometheus",
+		"tool_id": "tool-call-1",
+		"result": {
+			"status": "ok",
+			"raw": {
+				"series": [{"metric": "up", "value": 1}]
+			}
+		}
+	}`
+
+	roundTrip[StreamChunk](t, input, func(c StreamChunk) {
+		assertEqual(t, "type", c.Type, "tool")
+		assertEqual(t, "tool", c.Tool, "grafana__query_prometheus")
+		assertEqual(t, "tool_id", c.ToolID, "tool-call-1")
+
+		result, ok := c.Result.(map[string]any)
+		if !ok {
+			t.Fatalf("result should decode to object, got %T", c.Result)
+		}
+		if result["status"] != "ok" {
+			t.Fatalf("result.status = %v, want %q", result["status"], "ok")
+		}
+
+		raw, ok := result["raw"].(map[string]any)
+		if !ok {
+			t.Fatalf("result.raw should decode to object, got %T", result["raw"])
+		}
+		series, ok := raw["series"].([]any)
+		if !ok || len(series) != 1 {
+			t.Fatalf("result.raw.series = %#v, want one-entry list", raw["series"])
 		}
 	})
 }

@@ -29,22 +29,25 @@ const llmUserErrorMessage = "I'm having issues right now. Please try again, and 
 
 // Manager orchestrates the LLM agent loop with tool calling and memory.
 type Manager struct {
-	llm               *llm.Client
-	mcp               []mcp.Client
-	enricher          *appcontext.Enricher
-	store             storage.Store
-	scratchpads       *dashboard.Manager
-	tools             []mcp.Tool
-	kbPath            string
-	kbMaxSections     int
-	kbMaxSectionChars int
-	kbOnce            sync.Once
-	kbIndex           *kb.Index
-	kbErr             error
-	kbPlatformOnce    sync.Once
-	kbPlatformIndex   *kb.Index
-	kbPlatformErr     error
-	kbDashboardMap    map[string]string
+	llm                      *llm.Client
+	mcp                      []mcp.Client
+	enricher                 *appcontext.Enricher
+	store                    storage.Store
+	scratchpads              *dashboard.Manager
+	tools                    []mcp.Tool
+	toolClientMu             sync.RWMutex
+	toolClientByName         map[string]mcp.Client
+	investigationToolTimeout time.Duration
+	kbPath                   string
+	kbMaxSections            int
+	kbMaxSectionChars        int
+	kbOnce                   sync.Once
+	kbIndex                  *kb.Index
+	kbErr                    error
+	kbPlatformOnce           sync.Once
+	kbPlatformIndex          *kb.Index
+	kbPlatformErr            error
+	kbDashboardMap           map[string]string
 
 	// Hybrid KB: vector search fields.
 	kbStructuredPath   string
@@ -53,20 +56,36 @@ type Manager struct {
 	kbVectorOnce       sync.Once
 	kbVectorIndex      *kb.VectorIndex
 	kbEmbedder         *kb.Embedder
+
+	routingMode           bool
+	compositeToolMode     bool
+	judgeGateMode         bool
+	evidenceRedactionMode bool
+	flagsInitialized      bool
+	promptProfile         PromptProfile
+	requestBudget         RequestBudget
 }
 
 // ManagerConfig holds configuration for the agent Manager.
 type ManagerConfig struct {
-	KBPath             string
-	KBMaxSections      int
-	KBMaxSectionChars  int
-	KBStructuredPath   string
-	KBVectorPath       string
-	KBVectorDBPath     string
-	KBEmbeddingModel   string
-	KBVectorMaxResults int
-	KBDashboardMap     map[string]string
-	OpenAIAPIKey       string
+	KBPath                   string
+	KBMaxSections            int
+	KBMaxSectionChars        int
+	KBStructuredPath         string
+	KBVectorPath             string
+	KBVectorDBPath           string
+	KBEmbeddingModel         string
+	KBVectorMaxResults       int
+	KBDashboardMap           map[string]string
+	OpenAIAPIKey             string
+	InvestigationToolTimeout time.Duration
+	ModelPromptProfile       string
+	RequestBudget            RequestBudget
+
+	RoutingMode           *bool
+	CompositeToolMode     *bool
+	JudgeGateMode         *bool
+	EvidenceRedactionMode *bool
 }
 
 // NewManager creates an agent manager.
@@ -85,19 +104,45 @@ func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcon
 	}
 
 	m := &Manager{
-		llm:                llmClient,
-		mcp:                mcpClients,
-		enricher:           enricher,
-		store:              store,
-		scratchpads:        scratchpads,
-		kbPath:             cfg.KBPath,
-		kbMaxSections:      cfg.KBMaxSections,
-		kbMaxSectionChars:  cfg.KBMaxSectionChars,
-		kbStructuredPath:   cfg.KBStructuredPath,
-		kbVectorDBPath:     cfg.KBVectorDBPath,
-		kbVectorMaxResults: cfg.KBVectorMaxResults,
-		kbDashboardMap:     normalizeDashboardMap(cfg.KBDashboardMap),
+		llm:                      llmClient,
+		mcp:                      mcpClients,
+		enricher:                 enricher,
+		store:                    store,
+		scratchpads:              scratchpads,
+		kbPath:                   cfg.KBPath,
+		kbMaxSections:            cfg.KBMaxSections,
+		kbMaxSectionChars:        cfg.KBMaxSectionChars,
+		kbStructuredPath:         cfg.KBStructuredPath,
+		kbVectorDBPath:           cfg.KBVectorDBPath,
+		kbVectorMaxResults:       cfg.KBVectorMaxResults,
+		kbDashboardMap:           normalizeDashboardMap(cfg.KBDashboardMap),
+		toolClientByName:         map[string]mcp.Client{},
+		investigationToolTimeout: cfg.InvestigationToolTimeout,
+		routingMode:              boolOrDefault(cfg.RoutingMode, true),
+		compositeToolMode:        boolOrDefault(cfg.CompositeToolMode, true),
+		judgeGateMode:            boolOrDefault(cfg.JudgeGateMode, true),
+		evidenceRedactionMode:    boolOrDefault(cfg.EvidenceRedactionMode, true),
+		flagsInitialized:         true,
+		promptProfile:            ResolvePromptProfile(cfg.ModelPromptProfile),
+		requestBudget:            normalizeRequestBudget(cfg.RequestBudget),
 	}
+
+	if m.investigationToolTimeout <= 0 {
+		m.investigationToolTimeout = investigationToolTimeout
+	}
+
+	slog.Info("agent feature flags resolved",
+		"routing_mode", m.routingModeEnabled(),
+		"composite_tool_mode", m.compositeToolModeEnabled(),
+		"judge_gate_mode", m.judgeGateModeEnabled(),
+		"evidence_redaction_mode", m.evidenceRedactionModeEnabled(),
+		"model_prompt_profile", m.promptProfile.Name,
+		"budget_max_prompt_tokens", m.requestBudget.MaxPromptTokens,
+		"budget_max_completion_tokens", m.requestBudget.MaxCompletionTokens,
+		"budget_max_tool_iterations", m.requestBudget.MaxToolIterations,
+		"budget_max_tool_calls", m.requestBudget.MaxToolCalls,
+		"budget_max_estimated_cost_usd", m.requestBudget.MaxEstimatedCostUSD,
+	)
 
 	// Create embedder if API key and vector path are configured.
 	if cfg.OpenAIAPIKey != "" && cfg.KBVectorPath != "" {
@@ -116,15 +161,23 @@ func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcon
 
 // DiscoverTools queries all MCP clients for available tools and caches them.
 func (m *Manager) DiscoverTools(ctx context.Context) error {
-	m.tools = nil
+	discoveredTools := make([]mcp.Tool, 0)
+	toolClientByName := map[string]mcp.Client{}
 	for _, c := range m.mcp {
 		tools, err := c.DiscoverTools(ctx)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to discover tools from MCP server", "error", err)
 			continue
 		}
-		m.tools = append(m.tools, tools...)
+		discoveredTools = append(discoveredTools, tools...)
+		for _, t := range tools {
+			toolClientByName[t.Name] = c
+		}
 	}
+	m.tools = discoveredTools
+	m.toolClientMu.Lock()
+	m.toolClientByName = toolClientByName
+	m.toolClientMu.Unlock()
 	slog.InfoContext(ctx, "discovered MCP tools", "count", len(m.tools))
 	return nil
 }
@@ -135,6 +188,14 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		streamFn(api.StreamChunk{Type: "error", Message: "unauthorized"})
 		return
 	}
+
+	intent := ClassifyIntent(req.Message, req.DashboardContext)
+	slog.InfoContext(ctx, "classified request intent",
+		"event", "intent_classification",
+		"intent_label", intent.Label,
+		"intent_confidence", intent.Confidence,
+		"intent_rationale", intent.Rationale,
+	)
 
 	// 1. Enrich dashboard context if UID is provided.
 	var dashCtx *appcontext.DashboardSummary
@@ -148,7 +209,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 2. Build system prompt.
-	systemPrompt := SystemPrompt(dashCtx, req.DashboardContext, m.tools)
+	systemPrompt := SystemPrompt(dashCtx, req.DashboardContext, m.tools, m.compositeToolModeEnabled(), m.promptProfile)
 
 	// 3. Load or create session, build memory.
 	mem := NewMemory(systemPrompt, 0)
@@ -230,6 +291,9 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			"prompt_length":         len(systemPrompt),
 			"has_dashboard_context": dashCtx != nil,
 			"tool_count":            len(m.tools),
+			"intent_label":          intent.Label,
+			"intent_confidence":     intent.Confidence,
+			"intent_rationale":      intent.Rationale,
 		}
 		if dashCtx != nil {
 			promptMeta["dashboard_title"] = dashCtx.Title
@@ -249,8 +313,37 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 
 	// 4. Add user message (sanitize control characters).
 	cleanMessage := sanitizeInput(req.Message)
+	var (
+		dashboardLookupContext    string
+		dashboardSemanticFallback bool
+		schemaContext             string
+		shouldInjectKB            bool
+	)
 	dashboardChanged := req.DashboardContext != nil && req.DashboardContext.UID != "" && req.DashboardContext.UID != prevDashboardUID
-	shouldInjectKB := isNewSession || dashboardChanged
+	if m.routingModeEnabled() {
+		dashboardLookupContext, dashboardSemanticFallback = m.buildDashboardLookupContext(ctx, intent, cleanMessage, req.DashboardContext)
+		schemaContext = m.buildSchemaContext(ctx, intent, cleanMessage, req.DashboardContext)
+		kbDecision := decideKBRouting(intent, cleanMessage, req.DashboardContext, isNewSession, dashboardChanged)
+		shouldInjectKB = kbDecision.Inject
+		slog.InfoContext(ctx, "evaluated KB retrieval routing",
+			"event", "kb_routing",
+			"intent_label", intent.Label,
+			"intent_confidence", intent.Confidence,
+			"inject_kb_context", kbDecision.Inject,
+			"kb_route_reason", kbDecision.Reason,
+			"kb_relevance_score", kbDecision.RelevanceScore,
+			"kb_signals", kbDecision.Signals,
+			"legacy_is_new_session", isNewSession,
+			"legacy_dashboard_changed", dashboardChanged,
+		)
+	} else {
+		slog.InfoContext(ctx, "routing mode disabled; skipping schema/dashboard/KB pre-routing",
+			"event", "routing_mode_disabled",
+			"intent_label", intent.Label,
+			"intent_confidence", intent.Confidence,
+		)
+	}
+
 	var kbContext string
 	var kbEvidence *api.KBSearchEvidence
 	var vectorEvidence *api.VectorSearchEvidence
@@ -263,17 +356,31 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			if vectorEvidence != nil {
 				vectorEvidence.Query = req.Message
 			}
+			evidenceForClient := &api.EvidencePayload{
+				KBSearch:     kbEvidence,
+				VectorSearch: vectorEvidence,
+			}
+			if m.evidenceRedactionModeEnabled() {
+				evidenceForClient = redactEvidencePayloadForClient(evidenceForClient)
+			}
 			streamFn(api.StreamChunk{
-				Type: "evidence",
-				Evidence: &api.EvidencePayload{
-					KBSearch:     kbEvidence,
-					VectorSearch: vectorEvidence,
-				},
+				Type:     "evidence",
+				Evidence: evidenceForClient,
 			})
 		}
 	}
+	if schemaContext != "" {
+		cleanMessage = cleanMessage + "\n\n[Schema Context]\n" + schemaContext
+	}
+	if dashboardLookupContext != "" {
+		cleanMessage = cleanMessage + "\n\n[Dashboard Lookup Context]\n" + dashboardLookupContext
+	}
 	if kbContext != "" {
 		cleanMessage = cleanMessage + "\n\n[KB Context]\n" + kbContext
+	}
+	selectedContextBlock := buildSelectedContextBlock(req.SelectedContext)
+	if selectedContextBlock != "" {
+		cleanMessage = cleanMessage + "\n\n[Selected Context]\n" + selectedContextBlock
 	}
 	mem.Add(openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleUser,
@@ -281,14 +388,25 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	})
 
 	// Log injected context as audit event.
-	if sess != nil && (kbContext != "" || dashCtx != nil) {
+	hasSelectedContext := len(req.SelectedContext) > 0
+	if sess != nil && (schemaContext != "" || dashboardLookupContext != "" || kbContext != "" || dashCtx != nil || hasSelectedContext) {
 		now := time.Now()
 		injection := map[string]any{}
+		if schemaContext != "" {
+			injection["schema_context"] = schemaContext
+		}
+		if dashboardLookupContext != "" {
+			injection["dashboard_lookup_context"] = dashboardLookupContext
+			injection["dashboard_lookup_used_semantic_fallback"] = dashboardSemanticFallback
+		}
 		if kbContext != "" {
 			injection["kb_context"] = kbContext
 		}
 		if dashCtx != nil {
 			injection["dashboard_context"] = dashCtx
+		}
+		if hasSelectedContext {
+			injection["selected_context"] = req.SelectedContext
 		}
 		_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
 			ID:           fmt.Sprintf("%s-%d-audit-context", sess.ID, now.UnixMilli()),
@@ -306,8 +424,12 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			"user_id", user.ID,
 			"org_id", user.OrgID,
 			"dashboard_uid", sess.DashboardUID,
+			"has_schema_context", schemaContext != "",
+			"has_dashboard_lookup_context", dashboardLookupContext != "",
+			"dashboard_lookup_used_semantic_fallback", dashboardSemanticFallback,
 			"has_kb_context", kbContext != "",
 			"has_dashboard_context", dashCtx != nil,
+			"has_selected_context", hasSelectedContext,
 		)
 	}
 
@@ -342,16 +464,74 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 5. Prepare OpenAI tools.
-	openaiTools := append(MCPToolsToOpenAI(m.tools), InternalTools()...)
+	orderedMCPTools := m.tools
+	if m.routingModeEnabled() {
+		orderedMCPTools = orderMCPToolsForIntent(m.tools, intent.Label)
+	}
+	openaiTools := append(MCPToolsToOpenAI(orderedMCPTools), selectInternalTools(m.compositeToolModeEnabled(), m.promptProfile)...)
+	metrics.PromptChars.Observe(float64(len(systemPrompt)))
+	metrics.PromptToolCount.Observe(float64(len(openaiTools)))
 
 	// 6. Agent loop (tool calling iterations).
-	var finalContent string
-	for iteration := 0; iteration <= maxToolIterations; iteration++ {
-		messages := mem.Messages()
+	var (
+		finalContent           string
+		promptTokensUsed       int
+		completionTokensUsed   int
+		toolCallsExecuted      int
+		budgetTriggerReason    string
+		budgetEstimatedCostUSD float64
+	)
 
-		if iteration == maxToolIterations {
-			// Last iteration: stream directly to the client.
-			ch, err := m.llm.StreamChat(ctx, messages, nil)
+	maxToolLoopIterations := m.requestBudget.MaxToolIterations
+	if maxToolLoopIterations <= 0 {
+		maxToolLoopIterations = maxToolIterations
+	}
+
+	for iteration := 0; iteration <= maxToolLoopIterations; iteration++ {
+		messages := mem.Messages()
+		fittedMessages, dropped, estimatedPromptTokens := fitMessagesToPromptBudget(messages, m.requestBudget.MaxPromptTokens)
+		messages = fittedMessages
+		if dropped > 0 {
+			slog.InfoContext(ctx, "trimmed chat history to fit prompt token budget",
+				"event", "request_budget_trim",
+				"dropped_messages", dropped,
+				"estimated_prompt_tokens", estimatedPromptTokens,
+				"max_prompt_tokens", m.requestBudget.MaxPromptTokens,
+			)
+		}
+		if estimatedPromptTokens > m.requestBudget.MaxPromptTokens {
+			budgetTriggerReason = budgetReasonPromptTokens
+		}
+
+		if budgetTriggerReason != "" || iteration == maxToolLoopIterations {
+			if budgetTriggerReason != "" {
+				metrics.RequestBudgetTripsTotal.WithLabelValues(budgetTriggerReason).Inc()
+				slog.WarnContext(ctx, "request budget guardrail triggered",
+					"event", "request_budget_triggered",
+					"reason", budgetTriggerReason,
+					"prompt_tokens_used", promptTokensUsed,
+					"completion_tokens_used", completionTokensUsed,
+					"tool_calls_executed", toolCallsExecuted,
+					"estimated_cost_usd", budgetEstimatedCostUSD,
+				)
+				guidance := budgetGuidanceMessage(budgetTriggerReason)
+				messages = append(messages, openai.ChatCompletionMessage{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: guidance,
+				})
+				streamFn(api.StreamChunk{Type: "token", Message: budgetUserMessage(budgetTriggerReason) + " "})
+			}
+
+			remainingCompletion := remainingCompletionTokens(m.requestBudget, completionTokensUsed)
+			if remainingCompletion == 0 {
+				finalContent = strings.TrimSpace(budgetUserMessage(budgetReasonCompletionTokens))
+				streamFn(api.StreamChunk{Type: "complete", Message: finalContent})
+				streamFn(api.StreamChunk{Type: "done"})
+				break
+			}
+
+			streamOpts := llm.ChatOptions{MaxCompletionTokens: remainingCompletion}
+			ch, err := m.llm.StreamChatWithOptions(ctx, messages, nil, streamOpts)
 			if err != nil {
 				slog.ErrorContext(ctx, "LLM stream error",
 					"event", "error",
@@ -366,8 +546,14 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			break
 		}
 
+		remainingCompletion := remainingCompletionTokens(m.requestBudget, completionTokensUsed)
+		if remainingCompletion == 0 {
+			budgetTriggerReason = budgetReasonCompletionTokens
+			continue
+		}
+
 		// Use non-streaming call for tool loop iterations to check for tool calls.
-		resp, err := m.llm.Chat(ctx, messages, openaiTools)
+		resp, usage, err := m.llm.ChatWithOptions(ctx, messages, openaiTools, llm.ChatOptions{MaxCompletionTokens: remainingCompletion})
 		if err != nil {
 			slog.ErrorContext(ctx, "LLM error",
 				"event", "error",
@@ -377,6 +563,30 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			)
 			streamFn(api.StreamChunk{Type: "error", Message: userFacingLLMError(err)})
 			return
+		}
+
+		promptTokens := usage.PromptTokens
+		if promptTokens <= 0 {
+			promptTokens = estimatedPromptTokens
+		}
+		completionTokens := usage.CompletionTokens
+		if completionTokens <= 0 {
+			completionTokens = estimateTextTokens(resp.Content)
+		}
+		promptTokensUsed += promptTokens
+		completionTokensUsed += completionTokens
+		budgetEstimatedCostUSD = estimateRequestCostUSD(
+			promptTokensUsed,
+			completionTokensUsed,
+			m.requestBudget.PromptCostPer1MUSD,
+			m.requestBudget.CompletionCostPer1MUSD,
+		)
+		metrics.RequestBudgetEstimatedCostUSD.Observe(budgetEstimatedCostUSD)
+		if m.requestBudget.MaxEstimatedCostUSD > 0 && budgetEstimatedCostUSD > m.requestBudget.MaxEstimatedCostUSD {
+			budgetTriggerReason = budgetReasonEstimatedCost
+		}
+		if completionTokensUsed >= m.requestBudget.MaxCompletionTokens {
+			budgetTriggerReason = budgetReasonCompletionTokens
 		}
 
 		if len(resp.ToolCalls) == 0 {
@@ -389,7 +599,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				streamFn(api.StreamChunk{Type: "done"})
 			} else {
 				// Re-stream for a proper token-by-token experience.
-				ch, err := m.llm.StreamChat(ctx, messages, nil)
+				ch, err := m.llm.StreamChatWithOptions(ctx, messages, nil, llm.ChatOptions{MaxCompletionTokens: remainingCompletion})
 				if err != nil {
 					slog.ErrorContext(ctx, "LLM stream error",
 						"event", "error",
@@ -412,18 +622,34 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		})
 
 		for _, tc := range resp.ToolCalls {
+			if toolCallsExecuted >= m.requestBudget.MaxToolCalls {
+				budgetTriggerReason = budgetReasonToolCalls
+				break
+			}
+			toolCallsExecuted++
+
 			var args map[string]any
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 				args = map[string]any{"raw": tc.Function.Arguments}
 			}
 			metrics.ToolCallsTotal.WithLabelValues(tc.Function.Name).Inc()
+			toolReason := deriveToolCallReason(tc.Function.Name, args)
+			argsForClientValue := any(args)
+			if m.evidenceRedactionModeEnabled() {
+				argsForClientValue = redactToolStreamValueForClient(args)
+			}
+			argsForClient, _ := argsForClientValue.(map[string]any)
+			if argsForClient == nil {
+				argsForClient = map[string]any{}
+			}
 
 			// Stream tool invocation to client.
 			streamFn(api.StreamChunk{
 				Type:      "tool",
 				Tool:      tc.Function.Name,
+				Reason:    toolReason,
 				ToolID:    tc.ID,
-				Arguments: args,
+				Arguments: argsForClient,
 			})
 			slog.InfoContext(ctx, "Executing tool call",
 				"event", "tool_call",
@@ -432,13 +658,13 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				"org_id", user.OrgID,
 				"dashboard_uid", sess.DashboardUID,
 				"tool_name", tc.Function.Name,
-				"params", args,
+				"params", argsForClient,
 			)
 
 			// Execute tool.
 			result, err := m.handleInternalTool(ctx, tc.Function.Name, args, user, sess, req.DashboardContext)
 			if err == nil && result == nil {
-				result, err = RouteToolCall(ctx, tc.Function.Name, args, m.mcp)
+				result, err = m.invokeMCPTool(ctx, tc.Function.Name, args)
 			}
 			if err != nil {
 				metrics.ErrorsTotalBySource.WithLabelValues("tool_call").Inc()
@@ -453,18 +679,21 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 				result = fmt.Sprintf("Error: %v", err)
 			}
 
-			resultStr := mcp.FormatToolResult(result)
+			resultForClient, resultForModel := shapeToolResultOutputsWithMode(result, m.evidenceRedactionModeEnabled())
 
 			// Stream tool result to client.
 			streamFn(api.StreamChunk{
 				Type:   "tool",
 				Tool:   tc.Function.Name,
+				Reason: toolReason,
 				ToolID: tc.ID,
-				Result: result,
+				Result: resultForClient,
 			})
 
 			if sess != nil {
 				now := time.Now()
+				// Keep raw tool response in server-side audit logs for forensics.
+				// Redaction applies to client stream payloads only.
 				_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
 					ID:           fmt.Sprintf("%s-%d-audit-tool", sess.ID, now.UnixMilli()),
 					SessionID:    sess.ID,
@@ -482,7 +711,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 			// Add tool result to memory with delimiters.
 			mem.Add(openai.ChatCompletionMessage{
 				Role:       openai.ChatMessageRoleTool,
-				Content:    wrapToolResult(resultStr),
+				Content:    resultForModel,
 				ToolCallID: tc.ID,
 			})
 		}
@@ -575,11 +804,120 @@ func wrapToolResult(result string) string {
 	return "[TOOL_RESULT_START]\n" + result + "\n[TOOL_RESULT_END]"
 }
 
+// shapeToolResultOutputs keeps raw data for client evidence while feeding
+// summary-first formatted content to model memory.
+func shapeToolResultOutputs(result any) (any, string) {
+	return shapeToolResultOutputsWithMode(result, true)
+}
+
+func shapeToolResultOutputsWithMode(result any, evidenceRedactionMode bool) (any, string) {
+	streamPayload := result
+	if evidenceRedactionMode {
+		streamPayload = redactToolStreamValueForClient(result)
+	}
+	return streamPayload, wrapToolResult(mcp.FormatToolResult(result))
+}
+
+func deriveToolCallReason(toolName string, args map[string]any) string {
+	if explicit := extractExplicitToolReason(args); explicit != "" {
+		return explicit
+	}
+
+	if strings.EqualFold(strings.TrimSpace(toolName), "investigation__manage") {
+		if investigationReason := deriveInvestigationManageReason(args); investigationReason != "" {
+			return investigationReason
+		}
+	}
+
+	if query := firstNonEmptyArgString(args, "query", "expr", "promql", "logql"); query != "" {
+		return fmt.Sprintf("Run %s using query %q.", toolName, truncate(query, 110))
+	}
+
+	if target := firstNonEmptyArgString(args, "uid", "dashboardUid", "datasourceUid", "ruleUid", "alertUid"); target != "" {
+		return fmt.Sprintf("Use %s for target %q.", toolName, truncate(target, 90))
+	}
+
+	return fmt.Sprintf("Use %s to gather evidence for the current request.", toolName)
+}
+
+func extractExplicitToolReason(args map[string]any) string {
+	if len(args) == 0 {
+		return ""
+	}
+	if reason := strings.TrimSpace(toString(args["reason"])); reason != "" {
+		return truncate(reason, 220)
+	}
+
+	action := strings.ToLower(strings.TrimSpace(toString(args["action"])))
+	payloadKey, ok := investigationPayloadByAction[action]
+	if !ok || payloadKey == "" {
+		return ""
+	}
+
+	payload, ok := args[payloadKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if reason := strings.TrimSpace(toString(payload["reason"])); reason != "" {
+		return truncate(reason, 220)
+	}
+	return ""
+}
+
+func deriveInvestigationManageReason(args map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(toString(args["action"])))
+	switch action {
+	case investigationActionPlan:
+		return "Plan investigation scope and sequence before running fetch actions."
+	case investigationActionFetchMetrics:
+		if query := investigationPayloadQuery(args, investigationActionFetchMetrics); query != "" {
+			return fmt.Sprintf("Fetch metrics to validate impact using query %q.", truncate(query, 110))
+		}
+		return "Fetch metrics to validate impact and timeframe."
+	case investigationActionFetchLogs:
+		if query := investigationPayloadQuery(args, investigationActionFetchLogs); query != "" {
+			return fmt.Sprintf("Fetch logs to correlate events using query %q.", truncate(query, 110))
+		}
+		return "Fetch logs to correlate events around the anomaly window."
+	case investigationActionSummarize:
+		return "Summarize investigation findings into a concise incident update."
+	case investigationActionNextStep:
+		return "Recommend the next investigation step based on current evidence."
+	default:
+		return ""
+	}
+}
+
+func investigationPayloadQuery(args map[string]any, action string) string {
+	payloadKey, ok := investigationPayloadByAction[action]
+	if !ok {
+		return ""
+	}
+	payload, ok := args[payloadKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(toString(payload["query"]))
+}
+
+func firstNonEmptyArgString(args map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(toString(args[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
 		return s
 	}
-	return s[:max]
+	return string(runes[:max])
 }
 
 func normalizeDashboardMap(mapping map[string]string) map[string]string {
@@ -595,6 +933,41 @@ func normalizeDashboardMap(mapping map[string]string) map[string]string {
 		normalized[key] = v
 	}
 	return normalized
+}
+
+func boolOrDefault(value *bool, defaultValue bool) bool {
+	if value == nil {
+		return defaultValue
+	}
+	return *value
+}
+
+func (m *Manager) routingModeEnabled() bool {
+	if !m.flagsInitialized {
+		return true
+	}
+	return m.routingMode
+}
+
+func (m *Manager) compositeToolModeEnabled() bool {
+	if !m.flagsInitialized {
+		return true
+	}
+	return m.compositeToolMode
+}
+
+func (m *Manager) judgeGateModeEnabled() bool {
+	if !m.flagsInitialized {
+		return true
+	}
+	return m.judgeGateMode
+}
+
+func (m *Manager) evidenceRedactionModeEnabled() bool {
+	if !m.flagsInitialized {
+		return true
+	}
+	return m.evidenceRedactionMode
 }
 
 func newSessionID() string {
@@ -617,8 +990,68 @@ func marshalAuditValue(value any) string {
 	}
 }
 
+func (m *Manager) invokeMCPTool(ctx context.Context, name string, args map[string]any) (any, error) {
+	if client := m.getCachedToolClient(name); client != nil {
+		return client.InvokeTool(ctx, name, args)
+	}
+
+	client, err := FindToolClient(ctx, name, m.mcp)
+	if err != nil {
+		return nil, err
+	}
+	m.setCachedToolClient(name, client)
+	return client.InvokeTool(ctx, name, args)
+}
+
+func (m *Manager) getCachedToolClient(name string) mcp.Client {
+	m.toolClientMu.RLock()
+	client := m.toolClientByName[name]
+	m.toolClientMu.RUnlock()
+	return client
+}
+
+func (m *Manager) setCachedToolClient(name string, client mcp.Client) {
+	if client == nil || strings.TrimSpace(name) == "" {
+		return
+	}
+	m.toolClientMu.Lock()
+	if m.toolClientByName == nil {
+		m.toolClientByName = map[string]mcp.Client{}
+	}
+	m.toolClientByName[name] = client
+	m.toolClientMu.Unlock()
+}
+
 func (m *Manager) handleInternalTool(ctx context.Context, name string, args map[string]any, user *grafana.User, sess *storage.Session, reqCtx *api.DashboardContext) (any, error) {
 	switch name {
+	case "investigation__manage":
+		if !m.compositeToolModeEnabled() {
+			requestedAction := strings.ToLower(strings.TrimSpace(toString(args["action"])))
+			return map[string]any{
+				"status":    "tool_unavailable",
+				"action":    requestedAction,
+				"retryable": false,
+				"message":   "investigation__manage is disabled by feature flag",
+			}, nil
+		}
+		action, payloadKey, payload, err := parseInvestigationManageArgs(args)
+		if err != nil {
+			requestedAction := strings.ToLower(strings.TrimSpace(toString(args["action"])))
+			return map[string]any{
+				"status":           "input_error",
+				"action":           requestedAction,
+				"retryable":        true,
+				"message":          err.Error(),
+				"supportedActions": investigationManageActions,
+			}, nil
+		}
+		investigationID := strings.TrimSpace(toString(args["investigationId"]))
+		result := m.routeInvestigationAction(ctx, action, investigationID, payload, reqCtx)
+		if result == nil {
+			return nil, fmt.Errorf("investigation action %q produced no result", action)
+		}
+		result["payloadKey"] = payloadKey
+		return result, nil
 	case "scratchpad__upsert_panel":
 		if m.scratchpads == nil {
 			return nil, fmt.Errorf("scratchpad manager not configured")

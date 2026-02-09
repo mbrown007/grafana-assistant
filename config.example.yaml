@@ -1,7 +1,21 @@
 # Monitoring Assistant configuration
 # Environment variable overrides: ASSISTANT_LISTEN_ADDR, ASSISTANT_GRAFANA_URL,
 # ASSISTANT_GRAFANA_TOKEN, ASSISTANT_DATA_RETENTION_DAYS, ASSISTANT_DB_PATH,
-# ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL, ASSISTANT_BASE_PATH
+# ASSISTANT_OPENAI_API_KEY, ASSISTANT_OPENAI_MODEL, ASSISTANT_BASE_PATH,
+# ASSISTANT_MODEL_PROFILE, ASSISTANT_MODEL_PROFILE_DEFAULT,
+# ASSISTANT_REQUEST_BUDGET_MAX_PROMPT_TOKENS,
+# ASSISTANT_REQUEST_BUDGET_MAX_COMPLETION_TOKENS,
+# ASSISTANT_REQUEST_BUDGET_MAX_TOOL_ITERATIONS,
+# ASSISTANT_REQUEST_BUDGET_MAX_TOOL_CALLS,
+# ASSISTANT_REQUEST_BUDGET_MAX_ESTIMATED_COST_USD,
+# ASSISTANT_REQUEST_BUDGET_PROMPT_COST_PER_1M_USD,
+# ASSISTANT_REQUEST_BUDGET_COMPLETION_COST_PER_1M_USD,
+# ASSISTANT_FEATURE_ROUTING_MODE, ASSISTANT_FEATURE_COMPOSITE_TOOL_MODE,
+# ASSISTANT_FEATURE_JUDGE_GATE_MODE, ASSISTANT_FEATURE_EVIDENCE_REDACTION_MODE,
+# ASSISTANT_FEATURE_CHATOPS_ENABLED, ASSISTANT_CHATOPS_PROVIDER,
+# ASSISTANT_CHATOPS_BOT_USER_ID, ASSISTANT_CHATOPS_BOT_USER_NAME,
+# ASSISTANT_CHATOPS_BOT_ORG_ID, ASSISTANT_CHATOPS_MATTERMOST_URL,
+# ASSISTANT_CHATOPS_MATTERMOST_TOKEN, ASSISTANT_CHATOPS_MATTERMOST_TEAM
 #
 # Secrets can also be placed in a .env file (auto-loaded from working directory).
 
@@ -40,6 +54,29 @@ audit_log_path: "/var/log/grafana-assistant/audit.log"
 # OpenAI model (default: gpt-4o)
 openai_model: "gpt-4o"
 
+# Model prompt profile resolution (P6-2)
+# name: explicit profile override (optional; if set, family matching is skipped)
+# default: fallback profile when no family override matches
+# family_overrides: longest matching model-family prefix wins
+# model_profile:
+#   name: ""
+#   default: "balanced"     # balanced | compact | strict
+#   family_overrides:
+#     gpt-4o-mini: compact
+#     gpt-4.1-mini: compact
+#     gpt-4o: balanced
+#     gpt-4.1: strict
+
+# Per-request budget guardrails (P6-3)
+# request_budget:
+#   max_prompt_tokens: 12000
+#   max_completion_tokens: 4000
+#   max_tool_iterations: 5
+#   max_tool_calls: 12
+#   max_estimated_cost_usd: 0.10
+#   prompt_cost_per_1m_usd: 0.80
+#   completion_cost_per_1m_usd: 3.20
+
 # Knowledge base folder (default: "KB")
 # kb_path: "KB"
 # kb_max_sections: 2          # Max KB sections to inject per request
@@ -65,6 +102,28 @@ metrics_enabled: true
 # max_body_size: 65536                      # Max request body bytes
 # rate_limit_per_minute: 20                 # Chat requests per user per minute
 # rate_limit_burst: 5                       # Burst allowance
+# investigation_tool_timeout_seconds: 8      # Timeout budget for composite fetch tool actions
+
+# Runtime feature flags for rollout/rollback
+# feature_flags:
+#   routing_mode: true            # Enable schema/dashboard/KB routing strategy
+#   composite_tool_mode: true     # Enable internal investigation__manage tool
+#   judge_gate_mode: true         # Enable eval quality-gate enforcement
+#   evidence_redaction_mode: true # Redact secrets from streamed evidence payloads
+#   chatops_enabled: true         # Enable ChatOps messaging bridge
+
+# ChatOps bridge (optional). Connects the assistant to a messaging platform.
+# Run `make mattermost-setup` to create the bot account and get the token.
+# chatops:
+#   provider: mattermost
+#   bot_user_id: 99               # Synthetic Grafana user ID for session ownership
+#   bot_user_name: assistant-bot  # Display name in audit log
+#   bot_org_id: 1                 # Grafana org for session context
+#   mattermost:
+#     url: http://localhost:18065
+#     token: "<bot-personal-access-token>"
+#     team_name: monitoring
+#     channel_ids: []             # Empty = listen on all channels
 
 # MCP servers for tool integration (SSE or stdio transport).
 # For SSE, each server must be running before the assistant starts.
@@ -75,6 +134,14 @@ mcp_servers:
   - type: "grafana"
     transport: "sse"
     url: "http://localhost:8001"
+    # Optional per-server tool filters (exact tool names, with or without "<type>__" prefix).
+    # Denylist always wins over allowlist if a tool appears in both.
+    # tool_allowlist:
+    #   - "query_prometheus"
+    #   - "query_loki_logs"
+    #   - "search_dashboards"
+    # tool_denylist:
+    #   - "update_dashboard"
   - type: "genesyscloud"
     transport: "sse"
     url: "http://localhost:8002"

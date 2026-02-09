@@ -19,6 +19,8 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/agent"
 	"github.com/marcusz/monitoring-assistant/internal/api"
 	"github.com/marcusz/monitoring-assistant/internal/auth"
+	"github.com/marcusz/monitoring-assistant/internal/chatops"
+	"github.com/marcusz/monitoring-assistant/internal/chatops/mattermost"
 	"github.com/marcusz/monitoring-assistant/internal/config"
 	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
 	"github.com/marcusz/monitoring-assistant/internal/dashboard"
@@ -204,6 +206,7 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	modelPromptProfile := cfg.ResolvedModelProfile()
 
 	slog.Info("config loaded",
 		"listen_addr", cfg.ListenAddr,
@@ -211,6 +214,17 @@ func main() {
 		"db_path", cfg.DBPath,
 		"data_retention_days", cfg.DataRetentionDays,
 		"base_path", cfg.BasePath,
+		"openai_model", cfg.OpenAIModel,
+		"model_prompt_profile", modelPromptProfile,
+		"request_budget_max_prompt_tokens", cfg.RequestBudget.MaxPromptTokens,
+		"request_budget_max_completion_tokens", cfg.RequestBudget.MaxCompletionTokens,
+		"request_budget_max_tool_iterations", cfg.RequestBudget.MaxToolIterations,
+		"request_budget_max_tool_calls", cfg.RequestBudget.MaxToolCalls,
+		"request_budget_max_estimated_cost_usd", cfg.RequestBudget.MaxEstimatedCostUSD,
+		"feature_routing_mode", cfg.FeatureFlags.RoutingMode,
+		"feature_composite_tool_mode", cfg.FeatureFlags.CompositeToolMode,
+		"feature_judge_gate_mode", cfg.FeatureFlags.JudgeGateMode,
+		"feature_evidence_redaction_mode", cfg.FeatureFlags.EvidenceRedactionMode,
 	)
 
 	// Ensure database directory exists.
@@ -257,6 +271,15 @@ func main() {
 			transport = "sse"
 		}
 
+		if len(srv.ToolAllowlist) > 0 || len(srv.ToolDenylist) > 0 {
+			slog.Info("MCP tool filters configured",
+				"type", srv.Type,
+				"transport", transport,
+				"allowlist_count", len(srv.ToolAllowlist),
+				"denylist_count", len(srv.ToolDenylist),
+			)
+		}
+
 		switch transport {
 		case "sse":
 			c := mcp.NewSSEClient(srv.URL, srv.Type)
@@ -264,7 +287,7 @@ func main() {
 				slog.Warn("failed to connect to MCP server (will skip)", "type", srv.Type, "url", srv.URL, "error", err)
 				continue
 			}
-			mcpClients = append(mcpClients, c)
+			mcpClients = append(mcpClients, mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist))
 		case "stdio":
 			c, err := mcp.NewStdioClient(mcp.StdioConfig{
 				Command:    srv.Command,
@@ -281,7 +304,7 @@ func main() {
 				slog.Warn("failed to connect to stdio MCP server (will skip)", "type", srv.Type, "command", srv.Command, "error", err)
 				continue
 			}
-			mcpClients = append(mcpClients, c)
+			mcpClients = append(mcpClients, mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist))
 		default:
 			slog.Warn("unknown MCP transport (will skip)", "type", srv.Type, "transport", srv.Transport)
 		}
@@ -289,21 +312,75 @@ func main() {
 
 	// Create agent manager.
 	scratchpadMgr := dashboard.NewManager(grafanaClient, cfg.ScratchpadFolder)
+	routingMode := cfg.FeatureFlags.RoutingMode
+	compositeToolMode := cfg.FeatureFlags.CompositeToolMode
+	judgeGateMode := cfg.FeatureFlags.JudgeGateMode
+	evidenceRedactionMode := cfg.FeatureFlags.EvidenceRedactionMode
 	agentMgr := agent.NewManager(llmClient, mcpClients, enricher, store, scratchpadMgr, agent.ManagerConfig{
-		KBPath:             cfg.KBPath,
-		KBMaxSections:      cfg.KBMaxSections,
-		KBMaxSectionChars:  cfg.KBMaxSectionChars,
-		KBStructuredPath:   cfg.KBStructuredPath,
-		KBVectorPath:       cfg.KBVectorPath,
-		KBVectorDBPath:     cfg.KBVectorDBPath,
-		KBEmbeddingModel:   cfg.KBEmbeddingModel,
-		KBVectorMaxResults: cfg.KBVectorMaxResults,
-		KBDashboardMap:     cfg.KBDashboardMap,
-		OpenAIAPIKey:       cfg.OpenAIAPIKey,
+		KBPath:                   cfg.KBPath,
+		KBMaxSections:            cfg.KBMaxSections,
+		KBMaxSectionChars:        cfg.KBMaxSectionChars,
+		KBStructuredPath:         cfg.KBStructuredPath,
+		KBVectorPath:             cfg.KBVectorPath,
+		KBVectorDBPath:           cfg.KBVectorDBPath,
+		KBEmbeddingModel:         cfg.KBEmbeddingModel,
+		KBVectorMaxResults:       cfg.KBVectorMaxResults,
+		KBDashboardMap:           cfg.KBDashboardMap,
+		OpenAIAPIKey:             cfg.OpenAIAPIKey,
+		InvestigationToolTimeout: time.Duration(cfg.InvestigationToolTimeoutSeconds) * time.Second,
+		ModelPromptProfile:       modelPromptProfile,
+		RequestBudget: agent.RequestBudget{
+			MaxPromptTokens:        cfg.RequestBudget.MaxPromptTokens,
+			MaxCompletionTokens:    cfg.RequestBudget.MaxCompletionTokens,
+			MaxToolIterations:      cfg.RequestBudget.MaxToolIterations,
+			MaxToolCalls:           cfg.RequestBudget.MaxToolCalls,
+			MaxEstimatedCostUSD:    cfg.RequestBudget.MaxEstimatedCostUSD,
+			PromptCostPer1MUSD:     cfg.RequestBudget.PromptCostPer1MUSD,
+			CompletionCostPer1MUSD: cfg.RequestBudget.CompletionCostPer1MUSD,
+		},
+		RoutingMode:           &routingMode,
+		CompositeToolMode:     &compositeToolMode,
+		JudgeGateMode:         &judgeGateMode,
+		EvidenceRedactionMode: &evidenceRedactionMode,
 	})
 	if len(mcpClients) > 0 {
 		if err := agentMgr.DiscoverTools(context.Background()); err != nil {
 			slog.Warn("failed to discover MCP tools", "error", err)
+		}
+	}
+
+	// ChatOps bridge (optional).
+	if cfg.FeatureFlags.ChatOpsEnabled && cfg.ChatOps.Provider != "" {
+		botUser := &grafana.User{
+			ID:    cfg.ChatOps.BotUserID,
+			Login: cfg.ChatOps.BotUserName,
+			Name:  cfg.ChatOps.BotUserName,
+			OrgID: cfg.ChatOps.BotOrgID,
+		}
+		var chatProvider chatops.Provider
+		switch cfg.ChatOps.Provider {
+		case "mattermost":
+			chatProvider = mattermost.New(mattermost.Config{
+				URL:        cfg.ChatOps.Mattermost.URL,
+				Token:      cfg.ChatOps.Mattermost.Token,
+				TeamName:   cfg.ChatOps.Mattermost.TeamName,
+				ChannelIDs: cfg.ChatOps.Mattermost.ChannelIDs,
+			})
+		default:
+			slog.Warn("unknown chatops provider", "provider", cfg.ChatOps.Provider)
+		}
+		if chatProvider != nil {
+			bridge := chatops.NewBridge(chatProvider, agentMgr, botUser)
+			go func() {
+				if err := bridge.Start(ctx); err != nil {
+					slog.Error("chatops bridge stopped", "error", err)
+				}
+			}()
+			defer bridge.Stop()
+			slog.Info("chatops bridge started",
+				"provider", cfg.ChatOps.Provider,
+				"bot_user", cfg.ChatOps.BotUserName,
+			)
 		}
 	}
 
@@ -358,6 +435,7 @@ func main() {
 	appMux.HandleFunc("DELETE /api/history/{id}", api.HistoryDeleteHandler(store, sessionResolver))
 	appMux.HandleFunc("POST /api/feedback", api.FeedbackHandler(store, sessionResolver))
 	appMux.HandleFunc("GET /api/me", api.CurrentUserHandler(sessionResolver))
+	appMux.HandleFunc("GET /api/context/search", api.ContextSearchHandler(agentMgr, sessionResolver))
 
 	// Grafana reverse proxy
 	grafanaHandler, err := proxy.GrafanaHandler(cfg.GrafanaURL)
