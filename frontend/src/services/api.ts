@@ -1,4 +1,4 @@
-import type { ChatRequest, CurrentUser, FeedbackRequest, HistoryDetail, HistorySession, StreamChunk } from '../types';
+import type { ChatRequest, ContextEntity, ContextEntityType, CurrentUser, FeedbackRequest, HistoryDetail, HistorySession, StreamChunk } from '../types';
 import { withBasePath } from '../utils/basePath';
 
 async function* streamResponse(response: Response): AsyncGenerator<StreamChunk> {
@@ -108,6 +108,20 @@ export const userApi = {
       throw new Error(message || 'Unexpected response while checking Grafana login.');
     }
     return (await response.json()) as CurrentUser;
+  },
+};
+
+export const contextSearchApi = {
+  async search(type: ContextEntityType, query: string): Promise<ContextEntity[]> {
+    const params = new URLSearchParams({ type, q: query });
+    const response = await fetch(withBasePath(`/api/context/search?${params.toString()}`), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    if (!response.ok) {
+      throw new Error(`Context search failed (${response.status})`);
+    }
+    const data = (await response.json()) as { entities: ContextEntity[] };
+    return data.entities ?? [];
   },
 };
 

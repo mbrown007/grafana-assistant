@@ -47,12 +47,16 @@ func MCPToolsToOpenAI(mcpTools []mcp.Tool) []openai.Tool {
 
 // InternalTools returns OpenAI tool definitions handled by the agent itself.
 func InternalTools() []openai.Tool {
-	return []openai.Tool{
+	return selectInternalTools(true, ResolvePromptProfile(PromptProfileBalanced))
+}
+
+func selectInternalTools(compositeToolMode bool, profile PromptProfile) []openai.Tool {
+	tools := []openai.Tool{
 		{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
 				Name:        "scratchpad__upsert_panel",
-				Description: "Create or update the user's per-session scratchpad Grafana panel for complex visualizations.",
+				Description: toolDescription(profile, "scratchpad__upsert_panel", "Create or update the user's per-session scratchpad Grafana panel for complex visualizations."),
 				Parameters: json.RawMessage(`{
 					"type": "object",
 					"properties": {
@@ -71,7 +75,7 @@ func InternalTools() []openai.Tool {
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
 				Name:        "explore__open",
-				Description: "Open Grafana Explore with one or more ad-hoc queries for visualization.",
+				Description: toolDescription(profile, "explore__open", "Open Grafana Explore with one or more ad-hoc queries for visualization."),
 				Parameters: json.RawMessage(`{
 					"type": "object",
 					"properties": {
@@ -101,16 +105,54 @@ func InternalTools() []openai.Tool {
 			},
 		},
 	}
+
+	if compositeToolMode {
+		tools = append([]openai.Tool{
+			{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        "investigation__manage",
+					Description: toolDescription(profile, "investigation__manage", "Composite investigation contract with typed actions for plan, metrics, logs, summarize, and next-step flow."),
+					Parameters:  investigationManageToolParameters(),
+				},
+			},
+		}, tools...)
+	}
+
+	return tools
+}
+
+func toolDescription(profile PromptProfile, name, fallback string) string {
+	if profile.CompactToolDescriptions {
+		switch name {
+		case "investigation__manage":
+			return "Run typed investigation actions: plan, fetch_metrics, fetch_logs, summarize, next_step."
+		case "scratchpad__upsert_panel":
+			return "Create or update a scratchpad dashboard panel."
+		case "explore__open":
+			return "Open Grafana Explore with one or more queries."
+		}
+	}
+	return fallback
 }
 
 // RouteToolCall routes a tool call to the correct MCP client based on the name prefix.
 // Tool names are formatted as "servertype__toolname" (e.g., "alertmanager__list_alerts").
 func RouteToolCall(ctx context.Context, name string, args map[string]any, clients []mcp.Client) (any, error) {
+	client, err := FindToolClient(ctx, name, clients)
+	if err != nil {
+		return nil, err
+	}
+	return client.InvokeTool(ctx, name, args)
+}
+
+// FindToolClient resolves the MCP client that serves a given tool name.
+func FindToolClient(ctx context.Context, name string, clients []mcp.Client) (mcp.Client, error) {
 	for _, c := range clients {
 		tools, _ := c.DiscoverTools(ctx)
 		for _, t := range tools {
 			if t.Name == name {
-				return c.InvokeTool(ctx, name, args)
+				return c, nil
 			}
 		}
 	}

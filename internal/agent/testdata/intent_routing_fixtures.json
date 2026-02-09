@@ -1,0 +1,40 @@
+[
+  {
+    "name": "live_data_cpu_status",
+    "message": "What is the current CPU and error rate right now for checkout?",
+    "expected_intent": "live_data",
+    "expected_route": "schema_first"
+  },
+  {
+    "name": "query_help_promql",
+    "message": "Help me fix this PromQL query syntax error: sum by (pod) rate(http_requests_total[5m])",
+    "expected_intent": "query_help",
+    "expected_route": "schema_first"
+  },
+  {
+    "name": "dashboard_lookup_uid",
+    "message": "Find dashboard by UID fe9gm6guyzi0wd and open the panel for request latency",
+    "expected_intent": "dashboard_lookup",
+    "expected_route": "dashboard_metadata_first"
+  },
+  {
+    "name": "docs_help_runbook",
+    "message": "How do I configure Alertmanager routing and silence rules? Any docs or runbook?",
+    "expected_intent": "how_to_docs",
+    "expected_route": "docs_kb"
+  },
+  {
+    "name": "incident_summary_with_legacy_flags",
+    "message": "Summarize the SEV1 incident timeline and probable root cause from tonight",
+    "is_new_session": true,
+    "dashboard_changed": true,
+    "expected_intent": "incident_summary",
+    "expected_route": "none"
+  },
+  {
+    "name": "dashboard_lookup_wins_over_docs_phrase",
+    "message": "How do I find dashboard uid abc123 for payments service?",
+    "expected_intent": "dashboard_lookup",
+    "expected_route": "dashboard_metadata_first"
+  }
+]

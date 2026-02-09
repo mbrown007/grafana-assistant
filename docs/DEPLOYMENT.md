@@ -51,6 +51,9 @@ Copy `config.example.yaml` to `/etc/monitoring-assistant/config.yaml` and adjust
 - `base_path` (if serving under a sub-path like `/assistant`)
 - `kb_path` (if your KB is not in the working directory)
 - `kb_max_sections` / `kb_max_section_chars` (if you want to tune KB context size)
+- `model_profile` (prompt profile selection per model family)
+- `request_budget` (per-request token/tool/cost guardrails)
+- `feature_flags` (routing/composite/judge-gate/redaction rollout controls)
 
 Store secrets in `/etc/monitoring-assistant/assistant.env` and set permissions to `600`.
 
@@ -70,6 +73,19 @@ Adjust `User`, `Group`, `WorkingDirectory`, and paths in `ExecStart` as needed.
 If you use MCP stdio mode, the MCP processes inherit the assistant's environment,
 so put MCP secrets/vars in `/etc/monitoring-assistant/assistant.env` or a
 drop-in `assistant.secrets` file referenced by the override.
+
+For Grafana MCP, keep a read-focused default tool profile in stdio args:
+- `--enabled-tools search,datasource,prometheus,loki,alerting,dashboard,navigation`
+- `--disable-write`
+- `--disable-admin`
+
+Only enable write/admin categories for tightly controlled operator workflows.
+
+In assistant config (`mcp_servers` entries), you can also enforce per-server tool filtering:
+- `tool_allowlist`: expose only matching tools.
+- `tool_denylist`: always block matching tools (denylist overrides allowlist).
+
+Tool names can be configured with either full prefixes (`grafana__query_prometheus`) or short names (`query_prometheus`).
 
 ## KB indexing (optional)
 

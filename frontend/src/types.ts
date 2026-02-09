@@ -18,10 +18,20 @@ export interface ExploreContext {
   queries?: string[];
 }
 
+export type ContextEntityType = 'datasource' | 'dashboard' | 'metric' | 'label';
+
+export interface ContextEntity {
+  type: ContextEntityType;
+  id: string;
+  display_name: string;
+  metadata?: Record<string, string>;
+}
+
 export interface ChatRequest {
   message: string;
   session_id?: string;
   dashboard_context?: DashboardContext;
+  selected_context?: ContextEntity[];
 }
 
 export interface ChatResponse {
@@ -65,6 +75,7 @@ export interface StreamChunk {
   message?: string;
   session_id?: string;
   tool?: string;
+  reason?: string;
   tool_id?: string;
   arguments?: Record<string, unknown>;
   result?: unknown;
@@ -74,8 +85,20 @@ export interface StreamChunk {
 export interface ToolCall {
   id: string;
   tool: string;
+  reason?: string;
   arguments: Record<string, unknown>;
   output?: unknown;
+}
+
+export interface TimelineStep {
+  id: string;
+  order: number;
+  kind: 'start' | 'tool_call' | 'retry' | 'tool_result' | 'final_answer' | 'error';
+  title: string;
+  detail?: string;
+  tool?: string;
+  status?: 'ok' | 'warning' | 'error' | 'info';
+  timestamp: string;
 }
 
 export interface Message {
@@ -86,6 +109,24 @@ export interface Message {
   isStreaming?: boolean;
   toolCalls?: ToolCall[];
   evidence?: EvidencePayload;
+  timeline?: TimelineStep[];
+}
+
+export interface EvidenceBundle {
+  schema_version: 'evidence_bundle.v1';
+  exported_at: string;
+  source: 'monitoring-assistant';
+  session_id?: string;
+  dashboard_context?: DashboardContext;
+  assistant_message: {
+    id: string;
+    role: 'assistant';
+    timestamp: string;
+    content: string;
+  };
+  tool_calls: ToolCall[];
+  evidence?: EvidencePayload;
+  timeline: TimelineStep[];
 }
 
 export interface HistorySession {

@@ -50,6 +50,7 @@ type StreamChunk struct {
 	Message   string                 `json:"message,omitempty"`
 	SessionID string                 `json:"session_id,omitempty"`
 	Tool      string                 `json:"tool,omitempty"`
+	Reason    string                 `json:"reason,omitempty"`
 	ToolID    string                 `json:"tool_id,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
 	Result    interface{}            `json:"result,omitempty"`
@@ -84,6 +85,7 @@ type ChatRequest struct {
 	Message          string            `json:"message"`
 	SessionID        string            `json:"session_id,omitempty"`
 	DashboardContext *DashboardContext `json:"dashboard_context,omitempty"`
+	SelectedContext  []ContextEntity   `json:"selected_context,omitempty"`
 }
 
 type DashboardContext struct {
@@ -101,17 +103,40 @@ type ExploreContext struct {
 	Queries    []string `json:"queries,omitempty"`
 }
 
+// ContextEntityType defines the category of a user-selected context entity.
+type ContextEntityType string
+
+const (
+	ContextEntityDatasource ContextEntityType = "datasource"
+	ContextEntityDashboard  ContextEntityType = "dashboard"
+	ContextEntityMetric     ContextEntityType = "metric"
+	ContextEntityLabel      ContextEntityType = "label"
+)
+
+// ContextEntity is a single entity the user selected via the "@" context picker.
+type ContextEntity struct {
+	Type        ContextEntityType `json:"type"`
+	ID          string            `json:"id"`
+	DisplayName string            `json:"display_name"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+// ContextSearchResponse is returned by GET /api/context/search.
+type ContextSearchResponse struct {
+	Entities []ContextEntity `json:"entities"`
+}
+
 type ChatResponse struct {
 	Response  string `json:"response"`
 	SessionID string `json:"session_id"`
 }
 
 type HistorySession struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	DashboardUID string   `json:"dashboard_uid,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	DashboardUID string    `json:"dashboard_uid,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type HistoryMessage struct {
@@ -122,7 +147,7 @@ type HistoryMessage struct {
 }
 
 type HistoryDetail struct {
-	Session  HistorySession  `json:"session"`
+	Session  HistorySession   `json:"session"`
 	Messages []HistoryMessage `json:"messages"`
 }
 

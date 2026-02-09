@@ -1,0 +1,52 @@
+{
+  "schema_version": "judge-score.v1",
+  "rubric_id": "judge-rubric.v1",
+  "generated_at": "2026-02-08T21:15:00Z",
+  "judge_model": "gpt-5-mini",
+  "dataset": "tests/evals/dataset.yaml",
+  "run_artifact": "tests/evals/results/sample-baseline-run.json",
+  "cases": [
+    {
+      "id": "DSH-001",
+      "category": "dashboard_summary",
+      "verdict": "fail",
+      "dimension_scores": {
+        "factuality": 1,
+        "answer_completeness": 1,
+        "tool_usage_correctness": 2,
+        "hallucination_risk": 2,
+        "actionability": 1
+      },
+      "weighted_score": 0.3375,
+      "hard_failures": [
+        "factuality"
+      ],
+      "rationales": {
+        "factuality": "No grounded evidence is present in the response path because the request failed before data retrieval.",
+        "answer_completeness": "User request for a dashboard summary is not fulfilled.",
+        "tool_usage_correctness": "No incorrect tool use is shown, but evidence is insufficient for a complete answer.",
+        "hallucination_risk": "Response does not invent data, but confidence cannot be high due to missing retrieval.",
+        "actionability": "No actionable handoff output is provided."
+      },
+      "evidence_summary": "Case failed with curl_request_failed in baseline sample run."
+    }
+  ],
+  "aggregate": {
+    "case_count": 1,
+    "pass_count": 0,
+    "fail_count": 1,
+    "pass_rate": 0,
+    "average_weighted_score": 0.3375,
+    "average_dimension_scores": {
+      "factuality": 1,
+      "answer_completeness": 1,
+      "tool_usage_correctness": 2,
+      "hallucination_risk": 2,
+      "actionability": 1
+    },
+    "hard_failure_counts": {
+      "factuality": 1,
+      "hallucination_risk": 0
+    }
+  }
+}

@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://monitoring-assistant.local/docs/evals/judge-score.schema.json",
+  "title": "Judge Score Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rubric_id",
+    "generated_at",
+    "judge_model",
+    "dataset",
+    "run_artifact",
+    "cases",
+    "aggregate"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "judge-score.v1"
+    },
+    "rubric_id": {
+      "type": "string",
+      "const": "judge-rubric.v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "judge_model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dataset": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "verdict",
+          "dimension_scores",
+          "weighted_score",
+          "hard_failures",
+          "rationales"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "dimension_scores": {
+            "$ref": "#/$defs/dimensionScores"
+          },
+          "weighted_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "hard_failures": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "factuality",
+                "hallucination_risk"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "rationales": {
+            "$ref": "#/$defs/rationales"
+          },
+          "evidence_summary": {
+            "type": "string"
+          },
+          "judge_error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_count",
+        "pass_count",
+        "fail_count",
+        "pass_rate",
+        "average_weighted_score",
+        "average_dimension_scores",
+        "hard_failure_counts"
+      ],
+      "properties": {
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pass_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fail_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "average_weighted_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "average_dimension_scores": {
+          "$ref": "#/$defs/dimensionAverages"
+        },
+        "hard_failure_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "factuality",
+            "hallucination_risk"
+          ],
+          "properties": {
+            "factuality": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hallucination_risk": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dimensionScores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factuality",
+        "answer_completeness",
+        "tool_usage_correctness",
+        "hallucination_risk",
+        "actionability"
+      ],
+      "properties": {
+        "factuality": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "answer_completeness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "tool_usage_correctness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "hallucination_risk": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "actionability": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        }
+      }
+    },
+    "dimensionAverages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factuality",
+        "answer_completeness",
+        "tool_usage_correctness",
+        "hallucination_risk",
+        "actionability"
+      ],
+      "properties": {
+        "factuality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "answer_completeness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "tool_usage_correctness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "hallucination_risk": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "actionability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4
+        }
+      }
+    },
+    "rationales": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factuality",
+        "answer_completeness",
+        "tool_usage_correctness",
+        "hallucination_risk",
+        "actionability"
+      ],
+      "properties": {
+        "factuality": {
+          "type": "string",
+          "minLength": 1
+        },
+        "answer_completeness": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_usage_correctness": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hallucination_risk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionability": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

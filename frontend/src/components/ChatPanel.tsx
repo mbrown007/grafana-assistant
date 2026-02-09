@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Loader2, MoreVertical, History, Plus, Trash2, Moon, X, Star, Check } from 'lucide-react';
+import { Send, Loader2, MoreVertical, History, Plus, Trash2, Moon, Check } from 'lucide-react';
 import type {
+  ContextEntity,
   CurrentUser,
   DashboardContext,
+  EvidenceBundle,
   EvidencePayload,
-  EvidenceResult,
   HistorySession,
   Message,
+  StreamChunk,
+  TimelineStep,
   ToolCall,
 } from '../types';
-import { chatApi, feedbackApi, historyApi, userApi } from '../services/api';
+import { chatApi, historyApi, userApi } from '../services/api';
 import { MarkdownContent } from './MarkdownContent';
 import { Artifact, parseArtifacts } from './Artifact';
 import { useTheme } from './ThemeProvider';
@@ -26,7 +29,12 @@ import {
 } from './ui/dropdown-menu';
 import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
+import { EvidenceModal } from './EvidenceModal';
+import { FeedbackModal } from './FeedbackModal';
+import { useFeedback } from '../hooks/useFeedback';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
+import ContextPicker from './ContextPicker';
+import ContextChips from './ContextChips';
 import flavioAvatar from '../assets/flavio.png';
 
 interface ChatPanelProps {
@@ -50,6 +58,255 @@ const STREAMING_STATUS = [
   'Finalizing response...'
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function truncateText(value: string, maxChars: number): string {
+  const text = value.trim();
+  if (text.length <= maxChars) {
+    return text;
+  }
+  if (maxChars <= 3) {
+    return text.slice(0, maxChars);
+  }
+  return `${text.slice(0, maxChars - 3)}...`;
+}
+
+function summarizeToolArguments(args: Record<string, unknown>): string | undefined {
+  const action = typeof args.action === 'string' ? args.action.trim() : '';
+  if (action) {
+    return `action=${action}`;
+  }
+
+  const query = typeof args.query === 'string' ? args.query.trim() : '';
+  if (query) {
+    return `query=${truncateText(query, 90)}`;
+  }
+
+  const expr = typeof args.expr === 'string' ? args.expr.trim() : '';
+  if (expr) {
+    return `expr=${truncateText(expr, 90)}`;
+  }
+
+  const keys = Object.keys(args);
+  if (keys.length === 0) {
+    return undefined;
+  }
+  return `${keys.length} argument(s): ${keys.slice(0, 4).join(', ')}`;
+}
+
+function toolReasonText(chunk: StreamChunk): string {
+  return typeof chunk.reason === 'string' ? truncateText(chunk.reason, 180) : '';
+}
+
+function parseToolResultSummary(result: unknown): {
+  status: TimelineStep['status'];
+  detail: string;
+  retryCount: number;
+  retryDetail?: string;
+} {
+  if (!isRecord(result)) {
+    if (typeof result === 'string' && result.trim()) {
+      return {
+        status: 'info',
+        detail: truncateText(result, 180),
+        retryCount: 0,
+      };
+    }
+    return {
+      status: 'info',
+      detail: 'Result received.',
+      retryCount: 0,
+    };
+  }
+
+  const statusText = typeof result.status === 'string' ? result.status.trim() : '';
+  const messageText = typeof result.message === 'string' ? truncateText(result.message, 180) : '';
+  const attemptDetails = Array.isArray(result.attemptDetails) ? result.attemptDetails : [];
+  const retryCount = attemptDetails.length > 1 ? attemptDetails.length - 1 : 0;
+
+  let retryDetail = '';
+  const syntaxRetry = isRecord(result.syntaxRetry) ? result.syntaxRetry : undefined;
+  if (syntaxRetry) {
+    const detected = syntaxRetry.detected === true;
+    const applied = syntaxRetry.applied === true;
+    if (detected && applied) {
+      retryDetail = 'Syntax issue detected and one guided correction retry was applied.';
+    } else if (detected) {
+      retryDetail = 'Syntax issue detected; no safe automatic correction was available.';
+    }
+  }
+  if (!retryDetail && retryCount > 0) {
+    retryDetail = `${retryCount} retry attempt(s) were needed before completion.`;
+  }
+
+  const parts = [statusText ? `status=${statusText}` : '', messageText].filter(Boolean);
+  const detail = parts.length > 0 ? parts.join(' · ') : 'Result received.';
+
+  if (statusText === 'ok') {
+    return { status: 'ok', detail, retryCount, retryDetail: retryDetail || undefined };
+  }
+  if (statusText.includes('error') || statusText === 'tool_unavailable') {
+    return { status: 'error', detail, retryCount, retryDetail: retryDetail || undefined };
+  }
+  if (statusText) {
+    return { status: 'warning', detail, retryCount, retryDetail: retryDetail || undefined };
+  }
+  return { status: 'info', detail, retryCount, retryDetail: retryDetail || undefined };
+}
+
+function timelineEventsFromToolChunk(chunk: StreamChunk): Array<Omit<TimelineStep, 'id' | 'order' | 'timestamp'>> {
+  const toolName = chunk.tool || 'tool';
+  const events: Array<Omit<TimelineStep, 'id' | 'order' | 'timestamp'>> = [];
+
+  if (chunk.arguments && Object.keys(chunk.arguments).length > 0) {
+    const reason = toolReasonText(chunk);
+    events.push({
+      kind: 'tool_call',
+      title: `Tool call: ${toolName}`,
+      detail: reason || summarizeToolArguments(chunk.arguments),
+      tool: toolName,
+      status: 'info',
+    });
+  } else if (toolReasonText(chunk)) {
+    events.push({
+      kind: 'tool_call',
+      title: `Tool call: ${toolName}`,
+      detail: toolReasonText(chunk),
+      tool: toolName,
+      status: 'info',
+    });
+  }
+
+  if (typeof chunk.result !== 'undefined') {
+    const summary = parseToolResultSummary(chunk.result);
+    if (summary.retryCount > 0 || summary.retryDetail) {
+      events.push({
+        kind: 'retry',
+        title: `Retry: ${toolName}`,
+        detail: summary.retryDetail || `${summary.retryCount} retry attempt(s) detected.`,
+        tool: toolName,
+        status: 'warning',
+      });
+    }
+    events.push({
+      kind: 'tool_result',
+      title: `Tool result: ${toolName}`,
+      detail: summary.detail,
+      tool: toolName,
+      status: summary.status,
+    });
+  }
+
+  return events;
+}
+
+function deepCloneUnknown(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => deepCloneUnknown(item));
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = deepCloneUnknown(item);
+    }
+    return out;
+  }
+  return value;
+}
+
+function deepCloneRecord(record: Record<string, unknown>): Record<string, unknown> {
+  return deepCloneUnknown(record) as Record<string, unknown>;
+}
+
+function cloneEvidencePayload(evidence: EvidencePayload | undefined): EvidencePayload | undefined {
+  if (!evidence) {
+    return undefined;
+  }
+  return {
+    kb_search: evidence.kb_search
+      ? {
+          query: evidence.kb_search.query,
+          results: evidence.kb_search.results.map((result) => ({ ...result })),
+        }
+      : undefined,
+    vector_search: evidence.vector_search
+      ? {
+          query: evidence.vector_search.query,
+          results: evidence.vector_search.results.map((result) => ({ ...result })),
+        }
+      : undefined,
+  };
+}
+
+function buildEvidenceBundle(
+  message: Message,
+  options: { sessionId?: string; dashboardContext?: DashboardContext }
+): EvidenceBundle {
+  return {
+    schema_version: 'evidence_bundle.v1',
+    exported_at: new Date().toISOString(),
+    source: 'monitoring-assistant',
+    session_id: options.sessionId,
+    dashboard_context: options.dashboardContext
+      ? (deepCloneUnknown(options.dashboardContext) as DashboardContext)
+      : undefined,
+    assistant_message: {
+      id: message.id,
+      role: 'assistant',
+      timestamp: message.timestamp,
+      content: message.content,
+    },
+    tool_calls: (message.toolCalls || []).map((call) => ({
+      ...call,
+      arguments: deepCloneRecord(call.arguments),
+      output: deepCloneUnknown(call.output),
+    })),
+    evidence: cloneEvidencePayload(message.evidence),
+    timeline: [...(message.timeline || [])].sort((a, b) => a.order - b.order).map((step) => ({ ...step })),
+  };
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+
+  if (typeof document === 'undefined') {
+    return false;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return ok;
+}
+
+function downloadTextFile(filename: string, content: string): void {
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function evidenceBundleFileName(message: Message): string {
+  const safeID = message.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `evidence-bundle-${safeID}.json`;
+}
+
 export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -58,18 +315,19 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
   const [showHistory, setShowHistory] = useState(false);
   const [evidenceModal, setEvidenceModal] = useState<{
     messageId: string;
-    type: 'tool' | 'kb' | 'vector';
+    type: 'tool' | 'kb' | 'vector' | 'timeline';
   } | null>(null);
   const [feedbackModal, setFeedbackModal] = useState<{ messageId: string } | null>(null);
-  const [feedbackDrafts, setFeedbackDrafts] = useState<
-    Record<string, { rating: number; comment: string; submitted: boolean }>
-  >({});
-  const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [streamingStatusIndex, setStreamingStatusIndex] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [bundleStatusByMessage, setBundleStatusByMessage] = useState<Record<string, 'copied' | 'exported' | 'error'>>(
+    {}
+  );
+  const [selectedContext, setSelectedContext] = useState<ContextEntity[]>([]);
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const [contextPickerAnchor, setContextPickerAnchor] = useState<{ top: number; left: number } | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -146,11 +404,58 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
     setMessages((prev) => [...prev, message]);
   }, []);
 
-  const getFeedbackDraft = useCallback(
-    (messageId: string) =>
-      feedbackDrafts[messageId] ?? { rating: 0, comment: '', submitted: false },
-    [feedbackDrafts]
+  const markBundleStatus = useCallback((messageID: string, status: 'copied' | 'exported' | 'error') => {
+    setBundleStatusByMessage((prev) => ({ ...prev, [messageID]: status }));
+    window.setTimeout(() => {
+      setBundleStatusByMessage((prev) => {
+        if (prev[messageID] !== status) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[messageID];
+        return next;
+      });
+    }, 2000);
+  }, []);
+
+  const handleCopyEvidenceBundle = useCallback(
+    async (message: Message) => {
+      try {
+        const bundle = buildEvidenceBundle(message, { sessionId, dashboardContext });
+        const serialized = JSON.stringify(bundle, null, 2);
+        const copied = await copyTextToClipboard(serialized);
+        markBundleStatus(message.id, copied ? 'copied' : 'error');
+      } catch (error) {
+        console.error('Failed to copy evidence bundle', error);
+        markBundleStatus(message.id, 'error');
+      }
+    },
+    [dashboardContext, markBundleStatus, sessionId]
   );
+
+  const handleExportEvidenceBundle = useCallback(
+    (message: Message) => {
+      try {
+        const bundle = buildEvidenceBundle(message, { sessionId, dashboardContext });
+        const serialized = JSON.stringify(bundle, null, 2);
+        downloadTextFile(evidenceBundleFileName(message), serialized);
+        markBundleStatus(message.id, 'exported');
+      } catch (error) {
+        console.error('Failed to export evidence bundle', error);
+        markBundleStatus(message.id, 'error');
+      }
+    },
+    [dashboardContext, markBundleStatus, sessionId]
+  );
+
+  const {
+    getDraft: getFeedbackDraft,
+    updateDraft: updateFeedbackDraft,
+    submitFeedback,
+    error: feedbackError,
+    setError: setFeedbackError,
+    submitting: feedbackSubmitting,
+  } = useFeedback(sessionId);
 
   const mergeEvidence = useCallback((current: EvidencePayload | undefined, incoming: EvidencePayload | undefined) => {
     if (!incoming) {
@@ -238,6 +543,8 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
       };
       appendMessage(userMessage);
       setInput('');
+      const contextForRequest = selectedContext.length > 0 ? [...selectedContext] : undefined;
+      setSelectedContext([]);
       setIsLoading(true);
 
       const assistantId = `${Date.now()}-assistant`;
@@ -248,6 +555,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         timestamp: new Date().toISOString(),
         isStreaming: true,
         toolCalls: [],
+        timeline: [],
       };
       appendMessage(assistantMessage);
 
@@ -255,11 +563,33 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         let accumulated = '';
         let toolCalls: ToolCall[] = [];
         let toolCounter = 0;
+        let timeline: TimelineStep[] = [];
+        let timelineCounter = 0;
+        const appendTimelineStep = (step: Omit<TimelineStep, 'id' | 'order' | 'timestamp'>) => {
+          timelineCounter += 1;
+          const nextStep: TimelineStep = {
+            id: `${assistantId}-timeline-${timelineCounter}`,
+            order: timelineCounter,
+            timestamp: new Date().toISOString(),
+            ...step,
+          };
+          timeline = [...timeline, nextStep];
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === assistantId ? { ...msg, timeline: [...timeline] } : msg))
+          );
+        };
+        appendTimelineStep({
+          kind: 'start',
+          title: 'Assistant started',
+          detail: 'Preparing response and checking available context.',
+          status: 'info',
+        });
 
         for await (const chunk of chatApi.stream({
           message: messageText,
           session_id: sessionId,
           dashboard_context: dashboardContext,
+          selected_context: contextForRequest,
         })) {
           if (chunk.type === 'start' && chunk.session_id) {
             setSessionId(chunk.session_id);
@@ -280,9 +610,14 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
               chunk.arguments && Object.keys(chunk.arguments).length > 0
                 ? chunk.arguments
                 : existingCall?.arguments || {};
+            const nextReason =
+              typeof chunk.reason === 'string' && chunk.reason.trim().length > 0
+                ? chunk.reason.trim()
+                : existingCall?.reason;
             const toolCall: ToolCall = {
               id: toolId,
               tool: chunk.tool || existingCall?.tool || 'tool',
+              reason: nextReason,
               arguments: nextArguments,
               output: chunk.result ?? existingCall?.output,
             };
@@ -301,6 +636,11 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                 lastNavigateRef.current = result.url;
                 onNavigate(result.url);
               }
+            }
+
+            const timelineEvents = timelineEventsFromToolChunk(chunk);
+            for (const event of timelineEvents) {
+              appendTimelineStep(event);
             }
           }
 
@@ -324,7 +664,22 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
             setMessages((prev) =>
               prev.map((msg) => (msg.id === assistantId ? { ...msg, content: accumulated } : msg))
             );
+            appendTimelineStep({
+              kind: 'error',
+              title: 'Response error',
+              detail: chunk.message || 'Something went wrong while generating the response.',
+              status: 'error',
+            });
           }
+        }
+
+        if (accumulated.trim().length > 0 && !accumulated.startsWith('Error:')) {
+          appendTimelineStep({
+            kind: 'final_answer',
+            title: 'Final answer',
+            detail: truncateText(accumulated, 220),
+            status: 'ok',
+          });
         }
 
         setMessages((prev) =>
@@ -332,13 +687,27 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         );
       } catch (error) {
         console.error('Error sending message', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Something went wrong. Check that the server is running.';
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantId
               ? {
                   ...msg,
-                  content: `Error: ${error instanceof Error ? error.message : 'Something went wrong. Check that the server is running.'}`,
+                  content: `Error: ${errorMessage}`,
                   isStreaming: false,
+                  timeline: [
+                    ...(msg.timeline || []),
+                    {
+                      id: `${assistantId}-timeline-catch-error`,
+                      order: (msg.timeline?.length || 0) + 1,
+                      kind: 'error',
+                      title: 'Response error',
+                      detail: errorMessage,
+                      status: 'error',
+                      timestamp: new Date().toISOString(),
+                    },
+                  ],
                 }
               : msg
           )
@@ -364,6 +733,20 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
       autoResizeInput();
     });
   };
+
+  const handleContextSelect = useCallback((entity: ContextEntity) => {
+    setSelectedContext((prev) => {
+      if (prev.some((e) => e.type === entity.type && e.id === entity.id)) return prev;
+      return [...prev, entity];
+    });
+    // Remove the trailing "@" from input
+    setInput((prev) => prev.replace(/@\s*$/, '').trimEnd());
+    setContextPickerOpen(false);
+  }, []);
+
+  const handleContextRemove = useCallback((entity: ContextEntity) => {
+    setSelectedContext((prev) => prev.filter((e) => !(e.type === entity.type && e.id === entity.id)));
+  }, []);
 
   const autoResizeInput = useCallback(() => {
     const el = inputRef.current;
@@ -499,10 +882,12 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
             const isAssistant = message.role === 'assistant';
             const showArtifacts = isAssistant && !message.isStreaming;
             const hasToolCalls = isAssistant && !!message.toolCalls && message.toolCalls.length > 0;
+            const hasTimeline = isAssistant && !!message.timeline && message.timeline.length > 0;
             const hasKBEvidence = isAssistant && !!message.evidence?.kb_search?.results?.length;
             const hasVectorEvidence = isAssistant && !!message.evidence?.vector_search?.results?.length;
             const feedbackDraft = getFeedbackDraft(message.id);
             const feedbackSubmitted = feedbackDraft.submitted;
+            const bundleStatus = bundleStatusByMessage[message.id];
             const { artifacts, remainingContent } = showArtifacts
               ? parseArtifacts(message.content)
               : { artifacts: [], remainingContent: message.content };
@@ -536,7 +921,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                     )}
                   </Card>
                 </div>
-                {(hasToolCalls || hasKBEvidence || hasVectorEvidence || (isAssistant && !message.isStreaming)) && (
+                {(hasToolCalls || hasTimeline || hasKBEvidence || hasVectorEvidence || (isAssistant && !message.isStreaming)) && (
                   <div className="flex flex-wrap gap-2 pl-2">
                     {hasToolCalls && (
                       <Button
@@ -547,6 +932,17 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                         onClick={() => setEvidenceModal({ messageId: message.id, type: 'tool' })}
                       >
                         Tool calls ({message.toolCalls?.length ?? 0})
+                      </Button>
+                    )}
+                    {hasTimeline && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => setEvidenceModal({ messageId: message.id, type: 'timeline' })}
+                      >
+                        Timeline ({message.timeline?.length ?? 0})
                       </Button>
                     )}
                     {hasKBEvidence && (
@@ -569,6 +965,30 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
                         onClick={() => setEvidenceModal({ messageId: message.id, type: 'vector' })}
                       >
                         Vector search
+                      </Button>
+                    )}
+                    {isAssistant && !message.isStreaming && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => {
+                          void handleCopyEvidenceBundle(message);
+                        }}
+                      >
+                        {bundleStatus === 'copied' ? 'Copied bundle' : bundleStatus === 'error' ? 'Copy failed' : 'Copy bundle'}
+                      </Button>
+                    )}
+                    {isAssistant && !message.isStreaming && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 rounded-full px-3 text-xs"
+                        onClick={() => handleExportEvidenceBundle(message)}
+                      >
+                        {bundleStatus === 'exported' ? 'Exported bundle' : 'Export bundle'}
                       </Button>
                     )}
                     {isAssistant && !message.isStreaming && (
@@ -603,13 +1023,40 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
         <div ref={messagesEndRef} />
       </div>
 
+      {selectedContext.length > 0 && (
+        <div className="w-full max-w-[360px] px-4 pt-2">
+          <ContextChips entities={selectedContext} onRemove={handleContextRemove} />
+        </div>
+      )}
+
+      <div className="relative w-full max-w-[360px]">
+        <ContextPicker
+          open={contextPickerOpen}
+          anchorRect={contextPickerAnchor}
+          onSelect={handleContextSelect}
+          onClose={() => setContextPickerOpen(false)}
+        />
+      </div>
+
       <form className="w-full max-w-[360px] px-4 py-3 border-t border-border flex gap-2" onSubmit={handleSubmit}>
         <textarea
           ref={inputRef}
           value={input}
           onChange={(event) => {
-            setInput(event.target.value);
+            const newValue = event.target.value;
+            setInput(newValue);
             autoResizeInput();
+
+            // Detect "@" trigger for context picker
+            const cursorPos = event.target.selectionStart ?? newValue.length;
+            const charBefore = newValue[cursorPos - 1];
+            if (charBefore === '@' && (cursorPos === 1 || /\s/.test(newValue[cursorPos - 2] ?? ''))) {
+              const rect = inputRef.current?.getBoundingClientRect();
+              if (rect) {
+                setContextPickerAnchor({ top: rect.top, left: rect.left });
+              }
+              setContextPickerOpen(true);
+            }
           }}
           placeholder="Ask about this dashboard"
           rows={1}
@@ -681,250 +1128,32 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
           </div>
         </SheetContent>
       </Sheet>
-      {evidenceModal && (() => {
-        const selectedMessage = messages.find((msg) => msg.id === evidenceModal.messageId);
-        const title =
-          evidenceModal.type === 'tool'
-            ? 'Tool calls'
-            : evidenceModal.type === 'kb'
-              ? 'KB search'
-              : 'Vector search';
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-[720px] max-h-[80vh] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="text-sm font-semibold">{title}</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close evidence"
-                  onClick={() => setEvidenceModal(null)}
-                >
-                  <X size={16} />
-                </Button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[72vh] space-y-4">
-                {evidenceModal.type === 'tool' && (
-                  <>
-                    {(selectedMessage?.toolCalls || []).length === 0 ? (
-                      <div className="text-sm text-muted-foreground">No tool calls recorded for this response.</div>
-                    ) : (
-                      selectedMessage?.toolCalls?.map((call) => (
-                        <Card key={call.id} className="border border-border">
-                          <CardContent className="space-y-3 p-4">
-                            <div className="text-sm font-semibold">{call.tool}</div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Arguments</div>
-                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                {JSON.stringify(call.arguments, null, 2)}
-                              </pre>
-                            </div>
-                            <div>
-                              <div className="text-xs text-muted-foreground mb-1">Result</div>
-                              <pre className="bg-muted rounded-md p-2 text-xs overflow-x-auto">
-                                {JSON.stringify(call.output, null, 2)}
-                              </pre>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </>
-                )}
-                {evidenceModal.type === 'kb' && (
-                  <>
-                    {selectedMessage?.evidence?.kb_search ? (
-                      <EvidenceBlock
-                        title="Query"
-                        value={selectedMessage.evidence.kb_search.query}
-                        results={selectedMessage.evidence.kb_search.results}
-                      />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No KB search results for this response.</div>
-                    )}
-                  </>
-                )}
-                {evidenceModal.type === 'vector' && (
-                  <>
-                    {selectedMessage?.evidence?.vector_search ? (
-                      <EvidenceBlock
-                        title="Query"
-                        value={selectedMessage.evidence.vector_search.query}
-                        results={selectedMessage.evidence.vector_search.results}
-                      />
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No vector search results for this response.</div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-      {feedbackModal && (() => {
-        const draft = getFeedbackDraft(feedbackModal.messageId);
-        const submitted = draft.submitted;
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <div className="text-sm font-semibold">Feedback</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close feedback"
-                  onClick={() => setFeedbackModal(null)}
-                >
-                  <X size={16} />
-                </Button>
-              </div>
-              <div className="p-4 space-y-4">
-                {submitted ? (
-                  <div className="text-sm text-muted-foreground">
-                    Thanks! Your feedback has been recorded.
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-2">Usefulness</div>
-                      <div className="flex items-center gap-2">
-                        {Array.from({ length: 5 }, (_, index) => {
-                          const value = index + 1;
-                          const active = value <= draft.rating;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              className={cn(
-                                'h-9 w-9 inline-flex items-center justify-center rounded-md border border-border transition-colors',
-                                active ? 'text-amber-400 border-amber-400' : 'text-muted-foreground'
-                              )}
-                              aria-label={`Rate ${value} star${value === 1 ? '' : 's'}`}
-                              onClick={() =>
-                                setFeedbackDrafts((prev) => ({
-                                  ...prev,
-                                  [feedbackModal.messageId]: {
-                                    ...draft,
-                                    rating: value,
-                                  },
-                                }))
-                              }
-                            >
-                              <Star size={18} className={active ? 'fill-amber-400' : ''} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-2">Notes</div>
-                      <textarea
-                        rows={4}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        placeholder="What was helpful or missing?"
-                        value={draft.comment}
-                        onChange={(event) =>
-                          setFeedbackDrafts((prev) => ({
-                            ...prev,
-                            [feedbackModal.messageId]: {
-                              ...draft,
-                              comment: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                    {feedbackError && <div className="text-sm text-red-400">{feedbackError}</div>}
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" variant="secondary" onClick={() => setFeedbackModal(null)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={feedbackSubmitting || draft.rating === 0}
-                        onClick={async () => {
-                          if (!sessionId) {
-                            setFeedbackError('Session not ready yet. Please try again.');
-                            return;
-                          }
-                          setFeedbackSubmitting(true);
-                          setFeedbackError(null);
-                          try {
-                            await feedbackApi.submit({
-                              session_id: sessionId,
-                              message_id: feedbackModal.messageId,
-                              rating: draft.rating,
-                              comment: draft.comment,
-                            });
-                            setFeedbackDrafts((prev) => ({
-                              ...prev,
-                              [feedbackModal.messageId]: {
-                                ...draft,
-                                submitted: true,
-                              },
-                            }));
-                            setFeedbackModal(null);
-                          } catch (error) {
-                            setFeedbackError(
-                              error instanceof Error ? error.message : 'Failed to submit feedback.'
-                            );
-                          } finally {
-                            setFeedbackSubmitting(false);
-                          }
-                        }}
-                      >
-                        {feedbackSubmitting ? 'Sending...' : 'Send feedback'}
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-function EvidenceBlock({
-  title,
-  value,
-  results,
-}: {
-  title: string;
-  value: string;
-  results: EvidenceResult[];
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <div className="text-xs text-muted-foreground mb-1">{title}</div>
-        <div className="text-sm">{value}</div>
-      </div>
-      <div className="space-y-3">
-        {results.map((result, index) => (
-          <Card key={`${result.path ?? result.id ?? index}`} className="border border-border">
-            <CardContent className="space-y-2 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold">{result.title || result.path || 'Untitled'}</div>
-                {typeof result.score === 'number' && (
-                  <div className="text-xs text-muted-foreground">Score: {result.score.toFixed(2)}</div>
-                )}
-              </div>
-              {result.path && <div className="text-xs text-muted-foreground">{result.path}</div>}
-              {result.excerpt && (
-                <pre className="bg-muted rounded-md p-2 text-xs whitespace-pre-wrap">{result.excerpt}</pre>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {evidenceModal && (
+        <EvidenceModal
+          message={messages.find((msg) => msg.id === evidenceModal.messageId)}
+          type={evidenceModal.type}
+          onClose={() => setEvidenceModal(null)}
+        />
+      )}
+      {feedbackModal && (
+        <FeedbackModal
+          messageId={feedbackModal.messageId}
+          rating={getFeedbackDraft(feedbackModal.messageId).rating}
+          comment={getFeedbackDraft(feedbackModal.messageId).comment}
+          submitted={getFeedbackDraft(feedbackModal.messageId).submitted}
+          submitting={feedbackSubmitting}
+          error={feedbackError}
+          onClose={() => setFeedbackModal(null)}
+          onRate={(value) => updateFeedbackDraft(feedbackModal.messageId, { rating: value })}
+          onComment={(value) => updateFeedbackDraft(feedbackModal.messageId, { comment: value })}
+          onSubmit={async () => {
+            const ok = await submitFeedback(feedbackModal.messageId);
+            if (ok) {
+              setFeedbackModal(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

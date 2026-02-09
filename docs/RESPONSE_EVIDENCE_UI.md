@@ -74,6 +74,15 @@ export type VectorSearchEvidence = {
 - For Phase 1, evidence is stored in memory in the backend and attached to the response.
 - Do not persist evidence in DB yet.
 
+## Redaction Policy (Phase 4)
+- Streamed tool arguments/results and KB/vector evidence payloads are redacted before sending SSE chunks to the frontend.
+- Redaction is key-aware and pattern-aware:
+  - Key-aware: fields with names containing terms like `token`, `secret`, `password`, `api_key`, `authorization`, `client_secret`, `refresh_token`, `private_key`, `credential`.
+  - Pattern-aware: bearer/basic auth strings, JWT-like tokens, and inline key-value patterns such as `token=...`, `password: ...`, `api_key=...`.
+- Mask value: `[REDACTED]`.
+- Scope note: redaction is applied to frontend stream payloads; backend audit persistence remains unchanged unless explicitly configured otherwise.
+- Implementation reference: `internal/agent/redaction.go`.
+
 ## UI Components
 1) **ChatBubbleFooter**
    - Reads `message.evidence`
@@ -106,4 +115,3 @@ Chip behavior:
 - Should evidence be redacted (secrets) before sending to frontend?
 - Should tool calls be collapsed by default inside modal?
 - Do we want separate tabs in modal or a single combined view?
-

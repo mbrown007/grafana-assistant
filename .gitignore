@@ -1,5 +1,8 @@
 # Binaries
 /assistant
+/eval-guard
+/eval-judge
+/eval-quality-gate
 bin/
 *.exe
 *.exe~
@@ -62,3 +65,5 @@ Thumbs.db
 # Local assistant runtime artifacts
 .assistant.log
 .assistant.pid
+.haproxy-assistant.log
+.haproxy-assistant.pid

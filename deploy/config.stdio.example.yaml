@@ -5,6 +5,27 @@ grafana_url: "http://localhost:3000"
 db_path: "/var/lib/monitoring-assistant/assistant.db"
 openai_model: "gpt-4o"
 
+# model_profile:
+#   default: "balanced"
+#   family_overrides:
+#     gpt-4o-mini: compact
+#     gpt-4.1: strict
+
+# feature_flags:
+#   routing_mode: true
+#   composite_tool_mode: true
+#   judge_gate_mode: true
+#   evidence_redaction_mode: true
+
+# request_budget:
+#   max_prompt_tokens: 12000
+#   max_completion_tokens: 4000
+#   max_tool_iterations: 5
+#   max_tool_calls: 12
+#   max_estimated_cost_usd: 0.10
+#   prompt_cost_per_1m_usd: 0.80
+#   completion_cost_per_1m_usd: 3.20
+
 mcp_servers:
   - type: "alertmanager"
     transport: "stdio"
@@ -13,7 +34,21 @@ mcp_servers:
   - type: "grafana"
     transport: "stdio"
     command: "/usr/local/bin/mcp-grafana"
-    args: ["-t", "stdio"]
+    args:
+      - "-t"
+      - "stdio"
+      - "--enabled-tools"
+      - "search,datasource,prometheus,loki,alerting,dashboard,navigation"
+      - "--disable-write"
+      - "--disable-admin"
+    # Optional per-server filtering in assistant (applies after MCP tool discovery).
+    # Denylist takes precedence if a tool is listed in both.
+    # tool_allowlist:
+    #   - "query_prometheus"
+    #   - "query_loki_logs"
+    #   - "search_dashboards"
+    # tool_denylist:
+    #   - "get_dashboard_by_uid"
   - type: "genesyscloud"
     transport: "stdio"
     command: "/usr/local/bin/genesys-cloud-mcp-server"

@@ -23,6 +23,16 @@ type StreamChunk struct {
 	Result    any            `json:"result,omitempty"`
 }
 
+type ChatOptions struct {
+	MaxCompletionTokens int
+}
+
+type ChatUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
 // Client wraps the OpenAI API for chat completions.
 type Client struct {
 	client *openai.Client
@@ -63,10 +73,18 @@ func NewClientWithBaseURL(apiKey, model, baseURL string) (*Client, error) {
 
 // Chat performs a non-streaming chat completion.
 func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool) (*openai.ChatCompletionMessage, error) {
+	resp, _, err := c.ChatWithOptions(ctx, messages, tools, ChatOptions{})
+	return resp, err
+}
+
+func (c *Client) ChatWithOptions(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool, opts ChatOptions) (*openai.ChatCompletionMessage, ChatUsage, error) {
 	req := openai.ChatCompletionRequest{
 		Model:    c.model,
 		Messages: messages,
 		Tools:    tools,
+	}
+	if opts.MaxCompletionTokens > 0 {
+		req.MaxTokens = opts.MaxCompletionTokens
 	}
 
 	start := time.Now()
@@ -78,7 +96,7 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 		metrics.LLMRequestsTotal.WithLabelValues(c.model, "error").Inc()
 		metrics.ErrorsTotal.WithLabelValues("llm").Inc()
 		metrics.ErrorsTotalBySource.WithLabelValues("llm").Inc()
-		return nil, fmt.Errorf("openai chat: %w", err)
+		return nil, ChatUsage{}, fmt.Errorf("openai chat: %w", err)
 	}
 
 	metrics.LLMRequestsTotal.WithLabelValues(c.model, "ok").Inc()
@@ -92,19 +110,30 @@ func (c *Client) Chat(ctx context.Context, messages []openai.ChatCompletionMessa
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, errors.New("no response from LLM")
+		return nil, ChatUsage{}, errors.New("no response from LLM")
 	}
 
-	return &resp.Choices[0].Message, nil
+	return &resp.Choices[0].Message, ChatUsage{
+		PromptTokens:     resp.Usage.PromptTokens,
+		CompletionTokens: resp.Usage.CompletionTokens,
+		TotalTokens:      resp.Usage.TotalTokens,
+	}, nil
 }
 
 // StreamChat performs a streaming chat completion and returns a channel of chunks.
 func (c *Client) StreamChat(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool) (<-chan StreamChunk, error) {
+	return c.StreamChatWithOptions(ctx, messages, tools, ChatOptions{})
+}
+
+func (c *Client) StreamChatWithOptions(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool, opts ChatOptions) (<-chan StreamChunk, error) {
 	req := openai.ChatCompletionRequest{
 		Model:    c.model,
 		Messages: messages,
 		Tools:    tools,
 		Stream:   true,
+	}
+	if opts.MaxCompletionTokens > 0 {
+		req.MaxTokens = opts.MaxCompletionTokens
 	}
 
 	start := time.Now()

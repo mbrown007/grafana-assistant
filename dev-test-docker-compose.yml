@@ -74,3 +74,37 @@ services:
       - loki
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  mattermost-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mattermost
+      POSTGRES_PASSWORD: mattermost
+      POSTGRES_DB: mattermost
+    volumes:
+      - mattermost-db-data:/var/lib/postgresql/data
+
+  mattermost:
+    image: mattermost/mattermost-team-edition:9.11
+    restart: unless-stopped
+    ports:
+      - "18065:8065"
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://mattermost:mattermost@mattermost-db:5432/mattermost?sslmode=disable"
+      MM_SERVICESETTINGS_SITEURL: "http://localhost:18065"
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: "true"
+      MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE: "true"
+      MM_SERVICESETTINGS_ENABLEPOSTICONOVERRIDE: "true"
+      MM_TEAMSETTINGS_ENABLEOPENSERVER: "true"
+    depends_on:
+      - mattermost-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8065/api/v4/system/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mattermost-db-data:

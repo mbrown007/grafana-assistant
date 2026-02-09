@@ -1,7 +1,13 @@
-.PHONY: build build-all run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs deploy-lab
+.PHONY: build build-all run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs deploy-lab eval-baseline eval-judge eval-guard eval-quality-gate mattermost-up mattermost-down mattermost-setup
 .PHONY: audit-log-dir
 
 BIN := bin/assistant
+RUN_ARTIFACT ?= tests/evals/results/sample-baseline-run.json
+JUDGE_REPORT ?=
+GUARD_REPORT ?=
+# Read-focused Grafana MCP profile (P1-1 default).
+GRAFANA_MCP_ENABLED_TOOLS ?= search,datasource,prometheus,loki,alerting,dashboard,navigation
+GRAFANA_MCP_EXTRA_FLAGS ?=
 
 build: ## Build the Go binary
 	go build -o $(BIN) ./cmd/assistant
@@ -17,6 +23,23 @@ kb-reindex-token: ## Rebuild token index only (no API key needed)
 
 kb-reindex-jsonl: ## Rebuild vector index from scraper JSONL
 	go run ./cmd/kb-reindex -structured-path KB/runbooks -vector-jsonl docs-scraper/genesys_chunks.jsonl
+
+eval-baseline: ## Run baseline assistant eval dataset (requires auth cookie in ASSISTANT_COOKIE)
+	./scripts/eval_baseline.sh
+
+eval-judge: ## Run LLM judge scoring for a baseline artifact (requires OpenAI key)
+	./scripts/eval_judge.sh -run-artifact $(RUN_ARTIFACT)
+
+eval-guard: ## Run deterministic guard checks for a baseline artifact
+	./scripts/eval_guard.sh -run-artifact $(RUN_ARTIFACT)
+
+eval-quality-gate: ## Enforce eval quality thresholds from judge + guard reports
+	@if [ -z "$(JUDGE_REPORT)" ] || [ -z "$(GUARD_REPORT)" ]; then \
+		echo "Set JUDGE_REPORT and GUARD_REPORT, e.g."; \
+		echo "  make eval-quality-gate JUDGE_REPORT=tests/evals/results/judge-<timestamp>.json GUARD_REPORT=tests/evals/results/guard-<timestamp>.json"; \
+		exit 1; \
+	fi
+	./scripts/eval_quality_gate.sh --judge-report "$(JUDGE_REPORT)" --guard-report "$(GUARD_REPORT)"
 
 run: build ## Build and run (foreground)
 	./$(BIN) -config config.yaml
@@ -96,9 +119,14 @@ mcp-start: mcp-stop mcp-build ## Start all MCP servers in SSE mode
 	MCP_TRANSPORT=sse MCP_PORT=8000 \
 		ALERTMANAGER_URL=$${ALERTMANAGER_URL:-http://localhost:19093} \
 		./bin/mcp-alertmanager > .mcp-alertmanager.log 2>&1 & echo $$! > .mcp-alertmanager.pid; \
-	echo "Starting Grafana MCP on :8001..."; \
+	echo "Starting Grafana MCP on :8001 (read-focused profile)..."; \
 	GRAFANA_URL=$${GRAFANA_URL:-http://localhost:13000/grafana} \
+		GRAFANA_MCP_ENABLED_TOOLS=$${GRAFANA_MCP_ENABLED_TOOLS:-$(GRAFANA_MCP_ENABLED_TOOLS)} \
 		./bin/mcp-grafana -transport sse -address localhost:8001 \
+		--enabled-tools "$$GRAFANA_MCP_ENABLED_TOOLS" \
+		--disable-write \
+		--disable-admin \
+		$${GRAFANA_MCP_EXTRA_FLAGS:-$(GRAFANA_MCP_EXTRA_FLAGS)} \
 		> .mcp-grafana.log 2>&1 & echo $$! > .mcp-grafana.pid; \
 	echo "Starting Genesys Cloud MCP on :8002..."; \
 	MCP_TRANSPORT=sse MCP_PORT=8002 \
@@ -187,6 +215,20 @@ deploy-lab: frontend-build build-all ## Create lab deployment folder with all bi
 	@echo ""
 	@echo "Copy to server:"
 	@echo "  scp -r deploy/lab/* user@server:~/grafana-assistant/"
+
+# ---------------------------------------------------------------------------
+# Mattermost (ChatOps dev/demo)
+# ---------------------------------------------------------------------------
+
+mattermost-up: ## Start Mattermost + Postgres for ChatOps dev
+	docker compose -f dev-test-docker-compose.yml up -d mattermost-db mattermost --wait
+
+mattermost-down: ## Stop Mattermost + Postgres
+	docker compose -f dev-test-docker-compose.yml stop mattermost mattermost-db
+
+mattermost-setup: mattermost-up ## Create Mattermost team and bot account
+	@echo "Setting up Mattermost bot account..."
+	./scripts/setup_mattermost.sh
 
 help: ## Show this help
 	@grep -E '^[a-z][a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'

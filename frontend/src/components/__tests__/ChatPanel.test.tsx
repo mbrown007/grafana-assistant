@@ -25,6 +25,9 @@ vi.mock('../../services/api', () => ({
   userApi: {
     get: vi.fn().mockResolvedValue({ id: 1, login: 'admin', name: 'Admin', org_id: 1 }),
   },
+  contextSearchApi: {
+    search: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 describe('ChatPanel', () => {
@@ -143,6 +146,7 @@ describe('ChatPanel', () => {
         type: 'tool',
         tool: 'grafana__query_prometheus',
         tool_id: 'tool-1',
+        reason: 'Check whether baseline service health is stable before deeper investigation.',
         arguments: { query: 'up' },
         result: { data: [] },
       };
@@ -179,13 +183,42 @@ describe('ChatPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
+      expect(screen.getByText(/Timeline \(/)).toBeInTheDocument();
       expect(screen.getByText('KB search')).toBeInTheDocument();
       expect(screen.getByText('Vector search')).toBeInTheDocument();
     });
 
+    await userEvent.click(screen.getByRole('button', { name: 'Tool calls (1)' }));
+    await waitFor(() => {
+      expect(screen.getByText('Why this tool')).toBeInTheDocument();
+      expect(screen.getByText(/baseline service health is stable/)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Close evidence' }));
+
     await userEvent.click(screen.getByRole('button', { name: 'KB search' }));
     await waitFor(() => {
       expect(screen.getByText('overview excerpt')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Close evidence' }));
+
+    await userEvent.click(screen.getByRole('button', { name: /Timeline \(/ }));
+    await waitFor(() => {
+      expect(screen.getByText('Response timeline')).toBeInTheDocument();
+      expect(screen.getByText('Tool call')).toBeInTheDocument();
+      expect(screen.getAllByText('Final answer').length).toBeGreaterThan(0);
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Close evidence' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Vector search' }));
+    await waitFor(() => {
+      expect(screen.getByText('vector excerpt')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Close evidence' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('vector excerpt')).not.toBeInTheDocument();
+      expect(screen.queryByText('overview excerpt')).not.toBeInTheDocument();
+      expect(screen.queryByText('Response timeline')).not.toBeInTheDocument();
     });
   });
 
@@ -228,6 +261,94 @@ describe('ChatPanel', () => {
           comment: 'Nice answer',
         })
       );
+    });
+  });
+
+  it('copies and exports evidence bundle with schema and timestamp metadata', async () => {
+    const { chatApi } = await import('../../services/api');
+    vi.mocked(chatApi.stream).mockImplementationOnce(async function* () {
+      yield { type: 'start', session_id: 'test-session' };
+      yield {
+        type: 'tool',
+        tool: 'grafana__query_prometheus',
+        tool_id: 'tool-1',
+        reason: 'Validate baseline health.',
+        arguments: { query: 'up', filters: { env: 'prod' } },
+        result: { status: 'ok', nested: { token_count: 7 } },
+      };
+      yield {
+        type: 'evidence',
+        evidence: {
+          kb_search: {
+            query: 'health check',
+            results: [{ path: 'docs/overview.md', excerpt: 'overview excerpt', score: 0.9 }],
+          },
+        },
+      };
+      yield { type: 'complete', message: 'Bundle ready.' };
+      yield { type: 'done' };
+    });
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const createObjectURL = vi.fn().mockReturnValue('blob:test-bundle');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: createObjectURL,
+      configurable: true,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: revokeObjectURL,
+      configurable: true,
+    });
+
+    const { container } = renderWithTheme(<ChatPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hi, I'm Flavio")).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('Ask about this dashboard');
+    await userEvent.type(input, 'export this evidence');
+    const submit = container.querySelector('form button[type="submit"]');
+    expect(submit).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(submit as HTMLButtonElement);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Copy bundle')).toBeInTheDocument();
+      expect(screen.getByText('Export bundle')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText('Copy bundle'));
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+      expect(screen.getByText('Copied bundle')).toBeInTheDocument();
+    });
+
+    const copiedJSON = writeText.mock.calls[0][0] as string;
+    const bundle = JSON.parse(copiedJSON);
+    expect(bundle.schema_version).toBe('evidence_bundle.v1');
+    expect(bundle.source).toBe('monitoring-assistant');
+    expect(bundle.session_id).toBe('test-session');
+    expect(typeof bundle.exported_at).toBe('string');
+    expect(Number.isNaN(Date.parse(bundle.exported_at))).toBe(false);
+    expect(bundle.assistant_message.content).toBe('Bundle ready.');
+    expect(bundle.tool_calls).toHaveLength(1);
+    expect(bundle.tool_calls[0].arguments.filters.env).toBe('prod');
+    expect(bundle.tool_calls[0].output.nested.token_count).toBe(7);
+    expect(bundle.evidence?.kb_search?.results?.[0]?.path).toBe('docs/overview.md');
+
+    await userEvent.click(screen.getByText('Export bundle'));
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalled();
+      expect(screen.getByText('Exported bundle')).toBeInTheDocument();
     });
   });
 });
