@@ -4,11 +4,74 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
 )
+
+var (
+	dashboardLookupToolShortNames = map[string]struct{}{
+		"search_dashboards":           {},
+		"get_dashboard_by_uid":        {},
+		"get_dashboard_summary":       {},
+		"get_dashboard_panel_queries": {},
+		"list_datasources":            {},
+	}
+	queryHelpToolShortNames = map[string]struct{}{
+		"query_prometheus":             {},
+		"query_loki_logs":              {},
+		"list_prometheus_metric_names": {},
+		"list_prometheus_label_names":  {},
+		"list_prometheus_label_values": {},
+		"list_loki_label_names":        {},
+		"list_datasources":             {},
+		"search_dashboards":            {},
+		"get_dashboard_panel_queries":  {},
+	}
+)
+
+// filterToolsForIntent returns only the tools relevant to the given intent.
+// This reduces function schema tokens sent to the LLM.
+func filterToolsForIntent(tools []mcp.Tool, intent IntentClass) []mcp.Tool {
+	switch intent {
+	case IntentHowToDocs:
+		return filterByPrefix(tools, "kb__")
+	case IntentDashboardLookup:
+		return filterByShortNames(tools, dashboardLookupToolShortNames)
+	case IntentQueryHelp:
+		return filterByShortNames(tools, queryHelpToolShortNames)
+	default:
+		return append([]mcp.Tool(nil), tools...)
+	}
+}
+
+func filterByPrefix(tools []mcp.Tool, prefix string) []mcp.Tool {
+	if len(tools) == 0 {
+		return nil
+	}
+	filtered := make([]mcp.Tool, 0, len(tools))
+	for _, t := range tools {
+		if strings.HasPrefix(t.Name, prefix) {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
+func filterByShortNames(tools []mcp.Tool, allowed map[string]struct{}) []mcp.Tool {
+	if len(tools) == 0 {
+		return nil
+	}
+	filtered := make([]mcp.Tool, 0, len(tools))
+	for _, t := range tools {
+		if _, ok := allowed[toolShortName(t.Name)]; ok {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
 
 // MCPToolsToOpenAI converts MCP tool definitions to OpenAI function calling format.
 func MCPToolsToOpenAI(mcpTools []mcp.Tool) []openai.Tool {

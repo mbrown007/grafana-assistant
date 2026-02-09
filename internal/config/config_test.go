@@ -63,6 +63,32 @@ func TestLoad_FeatureFlagEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestLoad_EvalFixtureRecordDirEnvOverride(t *testing.T) {
+	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
+	t.Setenv("ASSISTANT_EVAL_FIXTURE_RECORD_DIR", " tests/evals/fixtures ")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.EvalFixtureRecordDir != "tests/evals/fixtures" {
+		t.Fatalf("EvalFixtureRecordDir = %q, want %q", cfg.EvalFixtureRecordDir, "tests/evals/fixtures")
+	}
+}
+
+func TestLoad_EvalBypassAuthEnvOverride(t *testing.T) {
+	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
+	t.Setenv("ASSISTANT_EVAL_BYPASS_AUTH", "true")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.EvalBypassAuth {
+		t.Fatal("expected EvalBypassAuth=true from env")
+	}
+}
+
 func TestLoad_InvalidFeatureFlagEnv(t *testing.T) {
 	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
 	t.Setenv("ASSISTANT_FEATURE_ROUTING_MODE", "maybe")

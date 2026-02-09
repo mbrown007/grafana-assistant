@@ -197,6 +197,12 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		"intent_rationale", intent.Rationale,
 	)
 
+	intentScopedMCPTools := m.tools
+	if m.routingModeEnabled() {
+		intentScopedMCPTools = filterToolsForIntent(intentScopedMCPTools, intent.Label)
+		intentScopedMCPTools = orderMCPToolsForIntent(intentScopedMCPTools, intent.Label)
+	}
+
 	// 1. Enrich dashboard context if UID is provided.
 	var dashCtx *appcontext.DashboardSummary
 	if req.DashboardContext != nil && req.DashboardContext.UID != "" {
@@ -208,8 +214,15 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		}
 	}
 
-	// 2. Build system prompt.
-	systemPrompt := SystemPrompt(dashCtx, req.DashboardContext, m.tools, m.compositeToolModeEnabled(), m.promptProfile)
+	// 2. Build system prompt (intent-aware).
+	systemPrompt := BuildSystemPrompt(PromptContext{
+		Intent:            intent.Label,
+		DashboardSummary:  dashCtx,
+		DashboardContext:  req.DashboardContext,
+		Tools:             intentScopedMCPTools,
+		CompositeToolMode: m.compositeToolModeEnabled(),
+		Profile:           m.promptProfile,
+	})
 
 	// 3. Load or create session, build memory.
 	mem := NewMemory(systemPrompt, 0)
@@ -290,7 +303,8 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		promptMeta := map[string]any{
 			"prompt_length":         len(systemPrompt),
 			"has_dashboard_context": dashCtx != nil,
-			"tool_count":            len(m.tools),
+			"tool_count":            len(intentScopedMCPTools),
+			"tool_count_total":      len(m.tools),
 			"intent_label":          intent.Label,
 			"intent_confidence":     intent.Confidence,
 			"intent_rationale":      intent.Rationale,
@@ -464,13 +478,13 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 5. Prepare OpenAI tools.
-	orderedMCPTools := m.tools
-	if m.routingModeEnabled() {
-		orderedMCPTools = orderMCPToolsForIntent(m.tools, intent.Label)
-	}
-	openaiTools := append(MCPToolsToOpenAI(orderedMCPTools), selectInternalTools(m.compositeToolModeEnabled(), m.promptProfile)...)
+	openaiTools := append(MCPToolsToOpenAI(intentScopedMCPTools), selectInternalTools(m.compositeToolModeEnabled(), m.promptProfile)...)
+	intentLabel := string(intent.Label)
 	metrics.PromptChars.Observe(float64(len(systemPrompt)))
+	metrics.PromptCharsByIntent.WithLabelValues(intentLabel).Observe(float64(len(systemPrompt)))
 	metrics.PromptToolCount.Observe(float64(len(openaiTools)))
+	metrics.PromptToolCountByIntent.WithLabelValues(intentLabel).Observe(float64(len(openaiTools)))
+	metrics.PromptToolCountFiltered.Observe(float64(len(intentScopedMCPTools)))
 
 	// 6. Agent loop (tool calling iterations).
 	var (

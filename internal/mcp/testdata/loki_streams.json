@@ -1,0 +1,52 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [
+      {
+        "stream": {
+          "app": "api-server",
+          "level": "error"
+        },
+        "values": [
+          [
+            "1700000000000000000",
+            "error: timeout"
+          ],
+          [
+            "1700000060000000000",
+            "error: db"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "service": "worker",
+          "level": "info"
+        },
+        "values": [
+          [
+            "1700000120000000000",
+            "info: done"
+          ]
+        ]
+      },
+      {
+        "stream": {
+          "app": "payments",
+          "level": "warn"
+        },
+        "values": [
+          [
+            "1700000180000000000",
+            "warn: slow"
+          ],
+          [
+            "1700000270000000000",
+            "warn: queue"
+          ]
+        ]
+      }
+    ]
+  }
+}

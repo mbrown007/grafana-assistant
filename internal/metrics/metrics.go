@@ -96,11 +96,37 @@ var (
 		},
 	)
 
+	PromptCharsByIntent = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_chars_by_intent",
+			Help:    "System prompt character count by intent class.",
+			Buckets: []float64{500, 1000, 2000, 3000, 4000, 6000, 8000, 10000},
+		},
+		[]string{"intent"},
+	)
+
 	PromptToolCount = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "assistant_prompt_tool_count",
 			Help:    "Number of tools exposed to the LLM per chat request.",
 			Buckets: []float64{0, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192},
+		},
+	)
+
+	PromptToolCountByIntent = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_tool_count_by_intent",
+			Help:    "Number of tools exposed to the LLM by intent class.",
+			Buckets: []float64{0, 2, 5, 10, 15, 20, 30, 40},
+		},
+		[]string{"intent"},
+	)
+
+	PromptToolCountFiltered = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_tool_count_filtered",
+			Help:    "Number of MCP tools selected after intent-based filtering per chat request.",
+			Buckets: []float64{0, 1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192},
 		},
 	)
 
@@ -159,7 +185,10 @@ func init() {
 		LLMRequestDuration,
 		LLMTokensTotal,
 		PromptChars,
+		PromptCharsByIntent,
 		PromptToolCount,
+		PromptToolCountByIntent,
+		PromptToolCountFiltered,
 		RequestBudgetTripsTotal,
 		RequestBudgetEstimatedCostUSD,
 		MCPToolCallsTotal,

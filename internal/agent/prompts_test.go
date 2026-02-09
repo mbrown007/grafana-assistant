@@ -145,3 +145,170 @@ func TestSystemPrompt_CompactProfileGuidance(t *testing.T) {
 		t.Fatal("expected compact response guidance in prompt")
 	}
 }
+
+// --- BuildSystemPrompt intent-specific tests ---
+
+func sampleTools() []mcp.Tool {
+	return []mcp.Tool{
+		{Name: "grafana__query_prometheus", Description: "Query Prometheus"},
+		{Name: "grafana__search_dashboards", Description: "Search dashboards"},
+		{Name: "alertmanager__list_alerts", Description: "List active alerts"},
+	}
+}
+
+func TestBuildSystemPrompt_HowToDocsOmitsArtifacts(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptContext{
+		Intent:            IntentHowToDocs,
+		Tools:             sampleTools(),
+		CompositeToolMode: true,
+		Profile:           ResolvePromptProfile(PromptProfileBalanced),
+	})
+
+	// how_to_docs should always include core role and security.
+	if !strings.Contains(prompt, "monitoring assistant") {
+		t.Error("expected role definition")
+	}
+	if !strings.Contains(prompt, "## Security Rules") {
+		t.Error("expected security rules")
+	}
+
+	// how_to_docs should NOT include these sections.
+	for _, absent := range []string{
+		"## Artifact System",
+		"## Scratchpad Tool",
+		"## Explore Tool",
+		"## Enabled Tool Summary",
+		"## Tool Policy",
+		"## Composite Investigation Tool",
+	} {
+		if strings.Contains(prompt, absent) {
+			t.Errorf("how_to_docs prompt should NOT contain %q", absent)
+		}
+	}
+
+	// Should contain docs-specific guidelines.
+	if !strings.Contains(prompt, "documentation") {
+		t.Error("expected docs-specific guidelines")
+	}
+}
+
+func TestBuildSystemPrompt_LiveDataIncludesAll(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptContext{
+		Intent:            IntentLiveData,
+		Tools:             sampleTools(),
+		CompositeToolMode: true,
+		Profile:           ResolvePromptProfile(PromptProfileBalanced),
+	})
+
+	for _, present := range []string{
+		"## Artifact System",
+		"## Scratchpad Tool",
+		"## Explore Tool",
+		"## Enabled Tool Summary",
+		"## Tool Policy",
+		"## Security Rules",
+		"## Composite Investigation Tool",
+		"## Guidelines",
+	} {
+		if !strings.Contains(prompt, present) {
+			t.Errorf("live_data prompt should contain %q", present)
+		}
+	}
+}
+
+func TestBuildSystemPrompt_IntentGuidelines(t *testing.T) {
+	cases := []struct {
+		intent  IntentClass
+		keyword string
+	}{
+		{IntentQueryHelp, "PromQL/LogQL syntax"},
+		{IntentDashboardLookup, "dashboard UIDs"},
+		{IntentHowToDocs, "documentation"},
+		{IntentIncidentSummary, "Investigate systematically"},
+		{IntentLiveData, "call the tools FIRST"},
+	}
+
+	for _, tc := range cases {
+		t.Run(string(tc.intent), func(t *testing.T) {
+			prompt := BuildSystemPrompt(PromptContext{
+				Intent:  tc.intent,
+				Tools:   sampleTools(),
+				Profile: ResolvePromptProfile(PromptProfileBalanced),
+			})
+			if !strings.Contains(prompt, tc.keyword) {
+				t.Errorf("expected %q intent guidelines to contain %q", tc.intent, tc.keyword)
+			}
+		})
+	}
+}
+
+func TestBuildSystemPrompt_HowToDocsSmallerThanLiveData(t *testing.T) {
+	tools := sampleTools()
+	profile := ResolvePromptProfile(PromptProfileBalanced)
+
+	live := BuildSystemPrompt(PromptContext{
+		Intent:            IntentLiveData,
+		Tools:             tools,
+		CompositeToolMode: true,
+		Profile:           profile,
+	})
+	docs := BuildSystemPrompt(PromptContext{
+		Intent:  IntentHowToDocs,
+		Profile: profile,
+	})
+
+	reduction := 1.0 - float64(len(docs))/float64(len(live))
+	if reduction < 0.30 {
+		t.Fatalf("how_to_docs prompt should be >=30%% smaller than live_data; got %.1f%% reduction (live=%d, docs=%d)",
+			reduction*100, len(live), len(docs))
+	}
+}
+
+func TestBuildSystemPrompt_UnknownIntentGetsFull(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptContext{
+		Intent:            IntentClass("unknown_intent"),
+		Tools:             sampleTools(),
+		CompositeToolMode: true,
+		Profile:           ResolvePromptProfile(PromptProfileBalanced),
+	})
+
+	// Unknown intent should get all sections as safe fallback.
+	for _, present := range []string{
+		"## Artifact System",
+		"## Scratchpad Tool",
+		"## Explore Tool",
+		"## Enabled Tool Summary",
+		"## Tool Policy",
+		"## Composite Investigation Tool",
+	} {
+		if !strings.Contains(prompt, present) {
+			t.Errorf("unknown intent prompt should contain %q as safe fallback", present)
+		}
+	}
+}
+
+func TestBuildSystemPrompt_IncidentSummaryIncludesCompositeTool(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptContext{
+		Intent:            IntentIncidentSummary,
+		Tools:             sampleTools(),
+		CompositeToolMode: true,
+		Profile:           ResolvePromptProfile(PromptProfileBalanced),
+	})
+	if !strings.Contains(prompt, "## Composite Investigation Tool") {
+		t.Fatal("incident_summary with CompositeToolMode should include composite investigation block")
+	}
+	if !strings.Contains(prompt, "investigation__manage") {
+		t.Fatal("incident_summary should reference investigation__manage tool")
+	}
+
+	// Without CompositeToolMode, should not include it.
+	promptNoComposite := BuildSystemPrompt(PromptContext{
+		Intent:            IntentIncidentSummary,
+		Tools:             sampleTools(),
+		CompositeToolMode: false,
+		Profile:           ResolvePromptProfile(PromptProfileBalanced),
+	})
+	if strings.Contains(promptNoComposite, "## Composite Investigation Tool") {
+		t.Fatal("incident_summary without CompositeToolMode should NOT include composite investigation block")
+	}
+}

@@ -329,6 +329,97 @@
         "showCommonLabels": false,
         "prettifyLogMessage": false
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prompt Size by Intent (avg chars)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 50},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (intent) (rate(assistant_prompt_chars_by_intent_sum[$__rate_interval])) / clamp_min(sum by (intent) (rate(assistant_prompt_chars_by_intent_count[$__rate_interval])), 1)",
+          "legendFormat": "{{intent}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prompt Tool Count by Intent (avg)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 50},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (intent) (rate(assistant_prompt_tool_count_by_intent_sum[$__rate_interval])) / clamp_min(sum by (intent) (rate(assistant_prompt_tool_count_by_intent_count[$__rate_interval])), 1)",
+          "legendFormat": "{{intent}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Budget Trips (by reason)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 58},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(assistant_request_budget_trips_total[$__rate_interval]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Avg Filtered MCP Tools / Request",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 58},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "(sum(increase(assistant_prompt_tool_count_filtered_sum[$__range])) or vector(0)) / clamp_min(sum(increase(assistant_prompt_tool_count_filtered_count[$__range])) or vector(1), 1)",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "type": "stat",
+      "title": "Estimated Request Cost p95 (USD)",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 58},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (increase(assistant_request_budget_estimated_cost_usd_bucket[$__range])))",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"}
     }
   ],
   "refresh": "30s",
@@ -355,5 +446,5 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Monitoring Assistant Observability",
-  "version": 1
+  "version": 2
 }

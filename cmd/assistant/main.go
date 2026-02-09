@@ -30,6 +30,7 @@ import (
 	"github.com/marcusz/monitoring-assistant/internal/mcp"
 	"github.com/marcusz/monitoring-assistant/internal/metrics"
 	"github.com/marcusz/monitoring-assistant/internal/middleware"
+	"github.com/marcusz/monitoring-assistant/internal/mockserver"
 	"github.com/marcusz/monitoring-assistant/internal/proxy"
 	"github.com/marcusz/monitoring-assistant/internal/storage"
 )
@@ -221,6 +222,8 @@ func main() {
 		"request_budget_max_tool_iterations", cfg.RequestBudget.MaxToolIterations,
 		"request_budget_max_tool_calls", cfg.RequestBudget.MaxToolCalls,
 		"request_budget_max_estimated_cost_usd", cfg.RequestBudget.MaxEstimatedCostUSD,
+		"eval_fixture_record_dir", cfg.EvalFixtureRecordDir,
+		"eval_bypass_auth", cfg.EvalBypassAuth,
 		"feature_routing_mode", cfg.FeatureFlags.RoutingMode,
 		"feature_composite_tool_mode", cfg.FeatureFlags.CompositeToolMode,
 		"feature_judge_gate_mode", cfg.FeatureFlags.JudgeGateMode,
@@ -287,7 +290,9 @@ func main() {
 				slog.Warn("failed to connect to MCP server (will skip)", "type", srv.Type, "url", srv.URL, "error", err)
 				continue
 			}
-			mcpClients = append(mcpClients, mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist))
+			client := mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist)
+			client = mockserver.NewRecordingClient(client, cfg.EvalFixtureRecordDir)
+			mcpClients = append(mcpClients, client)
 		case "stdio":
 			c, err := mcp.NewStdioClient(mcp.StdioConfig{
 				Command:    srv.Command,
@@ -304,7 +309,9 @@ func main() {
 				slog.Warn("failed to connect to stdio MCP server (will skip)", "type", srv.Type, "command", srv.Command, "error", err)
 				continue
 			}
-			mcpClients = append(mcpClients, mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist))
+			client := mcp.NewFilteredClient(c, srv.Type, srv.ToolAllowlist, srv.ToolDenylist)
+			client = mockserver.NewRecordingClient(client, cfg.EvalFixtureRecordDir)
+			mcpClients = append(mcpClients, client)
 		default:
 			slog.Warn("unknown MCP transport (will skip)", "type", srv.Type, "transport", srv.Transport)
 		}
@@ -415,13 +422,37 @@ func main() {
 
 	// Chat API (SSE streaming)
 	if llmClient != nil {
-		appMux.HandleFunc("POST /api/chat", api.AuthenticatedChatHandlerWithLimit(
-			sessionResolver,
-			func(r *http.Request, user *grafana.User, req api.ChatRequest, streamFn func(api.StreamChunk)) {
-				agentMgr.HandleChat(r.Context(), user, req, streamFn)
-			},
-			cfg.MaxMessageLength,
-		))
+		if cfg.EvalBypassAuth {
+			slog.Warn("eval auth bypass enabled for /api/chat; use only for local deterministic eval runs")
+			appMux.HandleFunc("POST /api/chat", api.ChatHandlerWithLimit(
+				func(r *http.Request, req api.ChatRequest, streamFn func(api.StreamChunk)) {
+					if caseID := strings.TrimSpace(r.Header.Get(mockserver.EvalCaseIDHeader)); caseID != "" {
+						ctx := mockserver.ContextWithEvalCaseID(r.Context(), caseID)
+						r = r.WithContext(ctx)
+					}
+					user := &grafana.User{
+						ID:    0,
+						OrgID: 1,
+						Login: "eval-runner",
+						Name:  "Eval Runner",
+					}
+					agentMgr.HandleChat(r.Context(), user, req, streamFn)
+				},
+				cfg.MaxMessageLength,
+			))
+		} else {
+			appMux.HandleFunc("POST /api/chat", api.AuthenticatedChatHandlerWithLimit(
+				sessionResolver,
+				func(r *http.Request, user *grafana.User, req api.ChatRequest, streamFn func(api.StreamChunk)) {
+					if caseID := strings.TrimSpace(r.Header.Get(mockserver.EvalCaseIDHeader)); caseID != "" {
+						ctx := mockserver.ContextWithEvalCaseID(r.Context(), caseID)
+						r = r.WithContext(ctx)
+					}
+					agentMgr.HandleChat(r.Context(), user, req, streamFn)
+				},
+				cfg.MaxMessageLength,
+			))
+		}
 		slog.Info("chat endpoint registered")
 	} else {
 		appMux.HandleFunc("POST /api/chat", func(w http.ResponseWriter, r *http.Request) {

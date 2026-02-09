@@ -34,6 +34,10 @@ type Config struct {
 	ScratchpadFolder  string `yaml:"scratchpad_folder"`
 	AuditLogPath      string `yaml:"audit_log_path"`
 	BasePath          string `yaml:"base_path"`
+	// Optional directory to record successful MCP tool responses as eval fixtures.
+	EvalFixtureRecordDir string `yaml:"eval_fixture_record_dir"`
+	// Dev/test only: bypass Grafana session auth for /api/chat and use synthetic user.
+	EvalBypassAuth bool `yaml:"eval_bypass_auth"`
 
 	// Database path for SQLite (default: data/assistant.db).
 	DBPath string `yaml:"db_path"`
@@ -253,6 +257,16 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("ASSISTANT_BASE_PATH"); v != "" {
 		cfg.BasePath = v
 	}
+	if v := os.Getenv("ASSISTANT_EVAL_FIXTURE_RECORD_DIR"); v != "" {
+		cfg.EvalFixtureRecordDir = v
+	}
+	if v := os.Getenv("ASSISTANT_EVAL_BYPASS_AUTH"); v != "" {
+		parsed, err := parseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ASSISTANT_EVAL_BYPASS_AUTH: %w", err)
+		}
+		cfg.EvalBypassAuth = parsed
+	}
 	if v := os.Getenv("ASSISTANT_OPENAI_API_KEY"); v != "" {
 		cfg.OpenAIAPIKey = v
 	}
@@ -421,6 +435,7 @@ func (c *Config) Normalize() error {
 		return err
 	}
 	c.BasePath = base
+	c.EvalFixtureRecordDir = strings.TrimSpace(c.EvalFixtureRecordDir)
 
 	for i := range c.MCPServers {
 		c.MCPServers[i].ToolAllowlist = normalizeStringList(c.MCPServers[i].ToolAllowlist)

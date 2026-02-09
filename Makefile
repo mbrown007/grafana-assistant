@@ -1,4 +1,4 @@
-.PHONY: build build-all run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs deploy-lab eval-baseline eval-judge eval-guard eval-quality-gate mattermost-up mattermost-down mattermost-setup
+.PHONY: build build-all run test test-integration frontend-test test-all lint clean help dev dev-stop dev-down dev-restart dev-logs frontend-build mcp-build mock-mcp-build mcp-start mcp-stop package install-systemd kb-reindex docker-up docker-down e2e-up e2e-down test-e2e haproxy-up haproxy-down haproxy-logs deploy-lab eval-baseline eval-baseline-mock record-eval-fixtures eval-judge eval-guard eval-quality-gate mattermost-up mattermost-down mattermost-setup
 .PHONY: audit-log-dir
 
 BIN := bin/assistant
@@ -27,6 +27,12 @@ kb-reindex-jsonl: ## Rebuild vector index from scraper JSONL
 eval-baseline: ## Run baseline assistant eval dataset (requires auth cookie in ASSISTANT_COOKIE)
 	./scripts/eval_baseline.sh
 
+eval-baseline-mock: mock-mcp-build build ## Run baseline dataset against mock MCP replay (no Docker required)
+	./scripts/eval_baseline.sh --mock
+
+record-eval-fixtures: ## Run baseline evals and record MCP fixtures (P8-3b)
+	./scripts/record_eval_fixtures.sh
+
 eval-judge: ## Run LLM judge scoring for a baseline artifact (requires OpenAI key)
 	./scripts/eval_judge.sh -run-artifact $(RUN_ARTIFACT)
 
@@ -40,6 +46,9 @@ eval-quality-gate: ## Enforce eval quality thresholds from judge + guard reports
 		exit 1; \
 	fi
 	./scripts/eval_quality_gate.sh --judge-report "$(JUDGE_REPORT)" --guard-report "$(GUARD_REPORT)"
+
+mock-mcp-build: ## Build mock MCP server binary for fixture replay
+	go build -o bin/mock-mcp ./cmd/mock-mcp
 
 run: build ## Build and run (foreground)
 	./$(BIN) -config config.yaml

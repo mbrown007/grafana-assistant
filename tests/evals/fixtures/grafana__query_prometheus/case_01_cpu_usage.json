@@ -1,0 +1,31 @@
+{
+  "tool_name": "grafana__query_prometheus",
+  "match": {
+    "datasourceUid": "^prometheus$",
+    "expr": "node_cpu"
+  },
+  "response": {
+    "status": "success",
+    "data": {
+      "resultType": "matrix",
+      "result": [
+        {
+          "metric": {
+            "instance": "node-a",
+            "mode": "idle"
+          },
+          "values": [
+            [
+              1738800000,
+              "0.81"
+            ],
+            [
+              1738800300,
+              "0.79"
+            ]
+          ]
+        }
+      ]
+    }
+  }
+}

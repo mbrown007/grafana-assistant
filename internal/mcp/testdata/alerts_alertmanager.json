@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "data": {
+    "alerts": [
+      {
+        "status": "active",
+        "labels": {
+          "severity": "critical",
+          "service": "payments",
+          "alertname": "DatabaseDown"
+        }
+      },
+      {
+        "status": "resolved",
+        "labels": {
+          "severity": "warning",
+          "service": "payments",
+          "alertname": "SlowQueries"
+        }
+      }
+    ]
+  }
+}

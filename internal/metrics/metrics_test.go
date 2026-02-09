@@ -9,6 +9,8 @@ import (
 
 func TestPromptBudgetMetricsRegistered(t *testing.T) {
 	RequestBudgetTripsTotal.WithLabelValues("registered")
+	PromptCharsByIntent.WithLabelValues("registered").Observe(0)
+	PromptToolCountByIntent.WithLabelValues("registered").Observe(0)
 
 	mfs, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
@@ -18,8 +20,17 @@ func TestPromptBudgetMetricsRegistered(t *testing.T) {
 	if !containsMetric(mfs, "assistant_prompt_chars") {
 		t.Fatalf("expected assistant_prompt_chars metric to be registered")
 	}
+	if !containsMetric(mfs, "assistant_prompt_chars_by_intent") {
+		t.Fatalf("expected assistant_prompt_chars_by_intent metric to be registered")
+	}
 	if !containsMetric(mfs, "assistant_prompt_tool_count") {
 		t.Fatalf("expected assistant_prompt_tool_count metric to be registered")
+	}
+	if !containsMetric(mfs, "assistant_prompt_tool_count_by_intent") {
+		t.Fatalf("expected assistant_prompt_tool_count_by_intent metric to be registered")
+	}
+	if !containsMetric(mfs, "assistant_prompt_tool_count_filtered") {
+		t.Fatalf("expected assistant_prompt_tool_count_filtered metric to be registered")
 	}
 	if !containsMetric(mfs, "assistant_request_budget_trips_total") {
 		t.Fatalf("expected assistant_request_budget_trips_total metric to be registered")
@@ -35,23 +46,41 @@ func TestPromptBudgetMetricsObserveSamples(t *testing.T) {
 		t.Fatalf("gather before observe: %v", err)
 	}
 	beforeChars := histogramSampleCount(before, "assistant_prompt_chars")
+	beforeCharsByIntent := histogramSampleCountWithLabels(before, "assistant_prompt_chars_by_intent", map[string]string{"intent": "how_to_docs"})
 	beforeTools := histogramSampleCount(before, "assistant_prompt_tool_count")
+	beforeToolsByIntent := histogramSampleCountWithLabels(before, "assistant_prompt_tool_count_by_intent", map[string]string{"intent": "how_to_docs"})
+	beforeFilteredTools := histogramSampleCount(before, "assistant_prompt_tool_count_filtered")
 
 	PromptChars.Observe(1024)
+	PromptCharsByIntent.WithLabelValues("how_to_docs").Observe(640)
 	PromptToolCount.Observe(7)
+	PromptToolCountByIntent.WithLabelValues("how_to_docs").Observe(2)
+	PromptToolCountFiltered.Observe(3)
 
 	after, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
 		t.Fatalf("gather after observe: %v", err)
 	}
 	afterChars := histogramSampleCount(after, "assistant_prompt_chars")
+	afterCharsByIntent := histogramSampleCountWithLabels(after, "assistant_prompt_chars_by_intent", map[string]string{"intent": "how_to_docs"})
 	afterTools := histogramSampleCount(after, "assistant_prompt_tool_count")
+	afterToolsByIntent := histogramSampleCountWithLabels(after, "assistant_prompt_tool_count_by_intent", map[string]string{"intent": "how_to_docs"})
+	afterFilteredTools := histogramSampleCount(after, "assistant_prompt_tool_count_filtered")
 
 	if afterChars <= beforeChars {
 		t.Fatalf("assistant_prompt_chars sample count did not increase: before=%d after=%d", beforeChars, afterChars)
 	}
+	if afterCharsByIntent <= beforeCharsByIntent {
+		t.Fatalf("assistant_prompt_chars_by_intent sample count did not increase: before=%d after=%d", beforeCharsByIntent, afterCharsByIntent)
+	}
 	if afterTools <= beforeTools {
 		t.Fatalf("assistant_prompt_tool_count sample count did not increase: before=%d after=%d", beforeTools, afterTools)
+	}
+	if afterToolsByIntent <= beforeToolsByIntent {
+		t.Fatalf("assistant_prompt_tool_count_by_intent sample count did not increase: before=%d after=%d", beforeToolsByIntent, afterToolsByIntent)
+	}
+	if afterFilteredTools <= beforeFilteredTools {
+		t.Fatalf("assistant_prompt_tool_count_filtered sample count did not increase: before=%d after=%d", beforeFilteredTools, afterFilteredTools)
 	}
 }
 
@@ -99,6 +128,21 @@ func histogramSampleCount(metricFamilies []*dto.MetricFamily, name string) uint6
 			return 0
 		}
 		return mf.GetMetric()[0].GetHistogram().GetSampleCount()
+	}
+	return 0
+}
+
+func histogramSampleCountWithLabels(metricFamilies []*dto.MetricFamily, name string, labels map[string]string) uint64 {
+	for _, mf := range metricFamilies {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, metric := range mf.GetMetric() {
+			if metric.GetHistogram() == nil || !metricLabelsMatch(metric.GetLabel(), labels) {
+				continue
+			}
+			return metric.GetHistogram().GetSampleCount()
+		}
 	}
 	return 0
 }

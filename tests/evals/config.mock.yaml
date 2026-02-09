@@ -1,0 +1,35 @@
+listen_addr: ":18081"
+grafana_url: "http://localhost:13000"
+db_path: "data/eval-mock.db"
+audit_log_path: "data/eval-mock-audit.log"
+scratchpad_ttl_days: 0
+openai_model: "gpt-4o"
+eval_bypass_auth: true
+
+mcp_servers:
+  - type: "grafana"
+    transport: "stdio"
+    command: "./bin/mock-mcp"
+    args:
+      - "-fixtures"
+      - "tests/evals/fixtures"
+      - "-server-type"
+      - "grafana"
+
+  - type: "alertmanager"
+    transport: "stdio"
+    command: "./bin/mock-mcp"
+    args:
+      - "-fixtures"
+      - "tests/evals/fixtures"
+      - "-server-type"
+      - "alertmanager"
+
+  - type: "kb"
+    transport: "stdio"
+    command: "./bin/mock-mcp"
+    args:
+      - "-fixtures"
+      - "tests/evals/fixtures"
+      - "-server-type"
+      - "kb"

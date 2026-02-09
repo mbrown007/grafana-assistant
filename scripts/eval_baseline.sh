@@ -2,12 +2,23 @@
 set -euo pipefail
 
 DATASET="tests/evals/dataset.yaml"
-API_URL="${ASSISTANT_API_URL:-http://localhost:8081/api/chat}"
+API_URL_DEFAULT="http://localhost:8081/api/chat"
+API_URL="${ASSISTANT_API_URL:-$API_URL_DEFAULT}"
 OUT_DIR="tests/evals/results"
 CATEGORY=""
 LIMIT=0
 TIMEOUT_SECONDS=120
 DELAY_MS=150
+MOCK_MODE=false
+MOCK_CONFIG="${ASSISTANT_EVAL_MOCK_CONFIG:-tests/evals/config.mock.yaml}"
+API_URL_EXPLICIT=false
+if [[ -n "${ASSISTANT_API_URL:-}" ]]; then
+  API_URL_EXPLICIT=true
+fi
+
+tmp_dir=""
+MOCK_ASSISTANT_PID=""
+MOCK_ASSISTANT_STARTED=false
 
 # Auth options:
 # - ASSISTANT_COOKIE: raw Cookie header value from a logged-in Grafana session.
@@ -29,6 +40,8 @@ Options:
   --dataset <path>       Dataset path (default: tests/evals/dataset.yaml)
   --url <url>            Chat API URL (default: $ASSISTANT_API_URL or http://localhost:8081/api/chat)
   --out-dir <dir>        Output directory for run artifacts (default: tests/evals/results)
+  --mock                 Run against local mock MCP config (tests/evals/config.mock.yaml)
+  --mock-config <path>   Mock assistant config path (default: tests/evals/config.mock.yaml)
   --category <name>      Only run one category from dataset
   --limit <n>            Max number of cases to run (0 = all)
   --timeout <seconds>    Curl timeout per case (default: 120)
@@ -69,6 +82,25 @@ epoch_ms() {
   printf '%s000\n' "$(date +%s)"
 }
 
+health_url_from_api() {
+  local api_url="$1"
+  if [[ "$api_url" == *"/api/chat" ]]; then
+    printf '%s/healthz\n' "${api_url%/api/chat}"
+    return
+  fi
+  printf '%s/healthz\n' "${api_url%/}"
+}
+
+cleanup() {
+  if [[ "$MOCK_ASSISTANT_STARTED" == "true" ]] && [[ -n "$MOCK_ASSISTANT_PID" ]]; then
+    kill "$MOCK_ASSISTANT_PID" 2>/dev/null || true
+    wait "$MOCK_ASSISTANT_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$tmp_dir" ]] && [[ -d "$tmp_dir" ]]; then
+    rm -rf "$tmp_dir"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dataset)
@@ -77,6 +109,16 @@ while [[ $# -gt 0 ]]; do
       ;;
     --url)
       API_URL="$2"
+      API_URL_EXPLICIT=true
+      shift 2
+      ;;
+    --mock)
+      MOCK_MODE=true
+      shift
+      ;;
+    --mock-config)
+      MOCK_CONFIG="$2"
+      MOCK_MODE=true
       shift 2
       ;;
     --out-dir)
@@ -111,6 +153,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$MOCK_MODE" == "true" ]] && [[ "$API_URL_EXPLICIT" != "true" ]]; then
+  API_URL="http://localhost:18081/api/chat"
+fi
+
 require_cmd curl
 require_cmd jq
 require_cmd awk
@@ -142,7 +188,48 @@ out_file="$OUT_DIR/baseline-$timestamp.json"
 tmp_dir="$(mktemp -d)"
 results_ndjson="$tmp_dir/results.ndjson"
 touch "$results_ndjson"
-trap 'rm -rf "$tmp_dir"' EXIT
+trap cleanup EXIT
+
+if [[ "$MOCK_MODE" == "true" ]]; then
+  require_cmd make
+  if [[ ! -f "$MOCK_CONFIG" ]]; then
+    echo "Mock config not found: $MOCK_CONFIG" >&2
+    exit 1
+  fi
+
+  # Build local binaries needed by mock mode without requiring Docker.
+  if ! GOCACHE="${GOCACHE:-/tmp/go-build}" GOMODCACHE="${GOMODCACHE:-/tmp/go-mod-cache}" make build mock-mcp-build >/dev/null; then
+    echo "Failed to build assistant/mock-mcp for --mock mode" >&2
+    exit 1
+  fi
+
+  mock_health_url="$(health_url_from_api "$API_URL")"
+  if ! curl -fsS "$mock_health_url" >/dev/null 2>&1; then
+    ./bin/assistant -config "$MOCK_CONFIG" >"$tmp_dir/mock-assistant.log" 2>&1 &
+    MOCK_ASSISTANT_PID="$!"
+    MOCK_ASSISTANT_STARTED=true
+
+    ready=false
+    for _ in $(seq 1 90); do
+      if curl -fsS "$mock_health_url" >/dev/null 2>&1; then
+        ready=true
+        break
+      fi
+      if ! kill -0 "$MOCK_ASSISTANT_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 1
+    done
+
+    if [[ "$ready" != "true" ]]; then
+      echo "Mock assistant failed to become healthy at $mock_health_url" >&2
+      if [[ -f "$tmp_dir/mock-assistant.log" ]]; then
+        tail -n 120 "$tmp_dir/mock-assistant.log" >&2 || true
+      fi
+      exit 1
+    fi
+  fi
+fi
 
 dataset_json="$DATASET"
 if ! jq -e '.cases and (.cases | type == "array")' "$dataset_json" >/dev/null 2>&1; then
@@ -182,6 +269,10 @@ mapfile -t selected_cases < <(jq -c --arg category "$CATEGORY" --argjson limit "
 delay_seconds="$(awk -v ms="$DELAY_MS" 'BEGIN { printf "%.3f", ms / 1000 }')"
 
 echo "Running baseline eval"
+if [[ "$MOCK_MODE" == "true" ]]; then
+  echo "  mode:     mock"
+  echo "  config:   $MOCK_CONFIG"
+fi
 echo "  dataset:  $DATASET"
 echo "  api_url:  $API_URL"
 echo "  cases:    $selected_count"
@@ -240,6 +331,7 @@ for case_json in "${selected_cases[@]}"; do
     -o "$sse_file"
     -w "%{http_code}"
   )
+  curl_args+=(-H "X-Assistant-Eval-Case-ID: $case_id")
   if [[ -n "$COOKIE_HEADER" ]]; then
     curl_args+=(-H "Cookie: $COOKIE_HEADER")
   fi

@@ -161,3 +161,40 @@ Output:
 
 - JSON summary report: `tests/evals/results/quality-gate-<timestamp>.json`
 - Optional markdown summary via `--summary-md` (used by CI job summaries)
+
+## Mock MCP replay server (`P8-3a`)
+
+For deterministic evals without a live Grafana stack, build and run the mock MCP fixture replay server:
+
+```bash
+make mock-mcp-build
+./bin/mock-mcp -fixtures tests/evals/fixtures
+```
+
+Run the baseline dataset end-to-end in mock mode:
+
+```bash
+make eval-baseline-mock
+```
+
+CI workflow split (`P8-3d`):
+- PRs run the mock-based eval quality gate job (no Docker).
+- Scheduled/manual runs execute the live-stack Docker eval job.
+
+Fixtures are stored under `tests/evals/fixtures/` and define:
+
+- `tool_name`: MCP tool identifier (for example `grafana__query_prometheus`)
+- `match`: regex patterns evaluated against tool arguments
+- `response`: JSON payload returned for matching calls
+
+If no fixture matches a call, the mock server returns a successful generic "no data" payload instead of an MCP error.
+
+Record fixtures from live stack:
+
+```bash
+scripts/record_eval_fixtures.sh
+```
+
+Before recording, run the assistant with fixture recording enabled:
+- `eval_fixture_record_dir: tests/evals/fixtures` in config, or
+- `ASSISTANT_EVAL_FIXTURE_RECORD_DIR=tests/evals/fixtures`

@@ -49,18 +49,18 @@ Owner legend: `JR` Junior · `MID` Mid-level · `SR` Senior (architecture/cross-
 
 | Task | Owner | Status | Issue/Ticket | PR | Notes |
 |---|---|---|---|---|---|
-| P8-1a | SR | `[ ]` | LOCAL-P8-1a | TBD | Intent-specific prompt builder refactor |
-| P8-1b | MID | `[ ]` | LOCAL-P8-1b | TBD | Per-intent tool set selection |
-| P8-1c | MID | `[ ]` | LOCAL-P8-1c | TBD | Prompt token budget metrics by intent |
-| P8-1d | JR | `[ ]` | LOCAL-P8-1d | TBD | Prompt builder tests and intent coverage |
-| P8-2a | MID | `[ ]` | LOCAL-P8-2a | TBD | Alert domain enrichment in formatter |
-| P8-2b | MID | `[ ]` | LOCAL-P8-2b | TBD | Prometheus query result enrichment |
-| P8-2c | JR | `[ ]` | LOCAL-P8-2c | TBD | Loki/log result enrichment |
-| P8-2d | JR | `[ ]` | LOCAL-P8-2d | TBD | Domain formatter tests |
-| P8-3a | SR | `[ ]` | LOCAL-P8-3a | TBD | Mock MCP server with fixture replay |
-| P8-3b | MID | `[ ]` | LOCAL-P8-3b | TBD | Fixture recording from live environment |
-| P8-3c | MID | `[ ]` | LOCAL-P8-3c | TBD | Eval runner mock-mode integration |
-| P8-3d | JR | `[ ]` | LOCAL-P8-3d | TBD | CI workflow for mock-based evals |
+| P8-1a | SR | `[x]` | LOCAL-P8-1a | — | Intent-specific prompt builder refactor |
+| P8-1b | MID | `[x]` | LOCAL-P8-1b | local | Intent-filtered MCP tool selection before prompt/schema exposure |
+| P8-1c | MID | `[x]` | LOCAL-P8-1c | local | Intent-labeled prompt/tool-count histograms emitted and documented |
+| P8-1d | JR | `[x]` | LOCAL-P8-1d | local | Added full 5-intent section matrix + size regression tests for prompt builder |
+| P8-2a | MID | `[x]` | LOCAL-P8-2a | local | Added alert domain summary path with severity/state counts, oldest firing duration, and common label grouping |
+| P8-2b | MID | `[x]` | LOCAL-P8-2b | local | Added Prometheus domain summary path with series/metric/value/cardinality enrichment |
+| P8-2c | JR | `[x]` | LOCAL-P8-2c | local | Added Loki domain summary path with log-line counts, level distribution, service grouping, and time span |
+| P8-2d | JR | `[x]` | LOCAL-P8-2d | local | Added fixture-driven domain tests + fallback/empty-case coverage for formatter paths |
+| P8-3a | SR | `[x]` | LOCAL-P8-3a | local | Mock MCP server with fixture replay |
+| P8-3b | MID | `[x]` | LOCAL-P8-3b | local | Fixture recording middleware + capture script for live runs |
+| P8-3c | MID | `[x]` | LOCAL-P8-3c | local | Added eval-baseline --mock + mock config + make eval-baseline-mock |
+| P8-3d | JR | `[x]` | LOCAL-P8-3d | local | Added PR mock-eval CI job + scheduled/manual live-stack job split |
 | P8-4a | SR | `[ ]` | LOCAL-P8-4a | TBD | Sub-agent interface and coordinator loop |
 | P8-4b | SR | `[ ]` | LOCAL-P8-4b | TBD | Dashboard specialist sub-agent |
 | P8-4c | SR | `[ ]` | LOCAL-P8-4c | TBD | Investigation specialist sub-agent |
@@ -71,7 +71,7 @@ Owner legend: `JR` Junior · `MID` Mid-level · `SR` Senior (architecture/cross-
 
 ## P8-1: Modular Intent-Specific System Prompts
 
-Phase status: `[ ]`
+Phase status: `[x]`
 
 **Goal**: Replace the single monolithic system prompt with intent-specific variants that include only the sections relevant to each intent class. This reduces prompt tokens by 30-50% per request and improves LLM focus.
 
@@ -401,7 +401,7 @@ func TestBuildSystemPrompt_IntentGuidelines(t *testing.T) {
 
 ## P8-2: Domain-Enriched NL Tool Result Formatting
 
-Phase status: `[ ]`
+Phase status: `[x]`
 
 **Goal**: Enhance the existing NL formatter with domain-specific intelligence so the LLM receives semantically rich summaries instead of generic "Tool returned object (status=ok, alerts=5)".
 
@@ -618,7 +618,7 @@ Each test should use realistic JSON fixtures. Create `internal/mcp/testdata/` di
 
 ## P8-3: Mock Eval Sandbox for Reproducible Testing
 
-Phase status: `[ ]`
+Phase status: `[x]`
 
 **Goal**: Create a mock MCP server that replays recorded tool responses so evals can run without a live Grafana/Prometheus/Alertmanager stack. This makes evals CI-reproducible and deterministic.
 

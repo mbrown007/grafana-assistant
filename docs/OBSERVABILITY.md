@@ -16,7 +16,10 @@ The application exposes Prometheus metrics at `/metrics`.
 | monitoring_assistant_scratchpads_created_total | Counter |  | Total number of scratchpad dashboards created. |
 | monitoring_assistant_errors_total | Counter | source (llm, grafana_api, tool_call) | Total number of errors, categorized by source. |
 | assistant_prompt_chars | Histogram |  | Character length of the built system prompt per chat request. |
+| assistant_prompt_chars_by_intent | HistogramVec | intent | Character length of the built system prompt, split by intent class. |
 | assistant_prompt_tool_count | Histogram |  | Number of tools exposed to the model per chat request. |
+| assistant_prompt_tool_count_by_intent | HistogramVec | intent | Number of tools exposed to the model, split by intent class. |
+| assistant_prompt_tool_count_filtered | Histogram |  | Number of MCP tools selected after intent-based filtering per chat request. |
 | assistant_request_budget_trips_total | Counter | reason | Number of times a request hit a budget guardrail. |
 | assistant_request_budget_estimated_cost_usd | Histogram |  | Estimated in-request LLM cost (USD) observed during tool-loop iterations. |
 
@@ -111,6 +114,8 @@ Script:
 scripts/eval_baseline.sh
 # or
 make eval-baseline
+# or (mock replay mode, no Docker)
+make eval-baseline-mock
 ```
 
 Outputs:
@@ -148,6 +153,11 @@ Auth notes:
 ```bash
 export ASSISTANT_COOKIE='grafana_session=...'
 ```
+
+Mock mode notes:
+
+- `scripts/eval_baseline.sh --mock` (or `make eval-baseline-mock`) uses `tests/evals/config.mock.yaml`.
+- Mock mode enables `eval_bypass_auth` for local eval-only runs and starts a local assistant automatically when needed.
 
 Optional context defaults:
 
