@@ -5,7 +5,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/internal/storage"
 )
 
 func TestMemory_BasicAddAndMessages(t *testing.T) {

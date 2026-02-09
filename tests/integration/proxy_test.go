@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/proxy"
+	"github.com/brownster/grafana-assistant/internal/proxy"
 )
 
 func TestProxy_Returns200(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
+	"github.com/brownster/grafana-assistant/internal/grafana"
 )
 
 func TestDashboardContext_EnrichedResponse(t *testing.T) {

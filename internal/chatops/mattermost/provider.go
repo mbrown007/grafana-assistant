@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/marcusz/monitoring-assistant/internal/chatops"
+	"github.com/brownster/grafana-assistant/internal/chatops"
 )
 
 // Config holds Mattermost connection settings.

@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/pkg/kb"
+	"github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/grafana"
 )
 
 // DefaultMaxMessageLength is the maximum character count for a chat message.

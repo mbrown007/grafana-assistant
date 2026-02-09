@@ -1,4 +1,4 @@
-module github.com/marcusz/monitoring-assistant
+module github.com/brownster/grafana-assistant
 
 go 1.25.5
 

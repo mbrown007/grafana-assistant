@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/marcusz/monitoring-assistant/internal/requestid"
+	"github.com/brownster/grafana-assistant/internal/requestid"
 )
 
 const requestIDHeader = "X-Request-ID"

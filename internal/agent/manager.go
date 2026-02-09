@@ -13,15 +13,15 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
-	"github.com/marcusz/monitoring-assistant/internal/dashboard"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
-	"github.com/marcusz/monitoring-assistant/internal/llm"
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
-	"github.com/marcusz/monitoring-assistant/internal/storage"
-	"github.com/marcusz/monitoring-assistant/pkg/kb"
+	"github.com/brownster/grafana-assistant/internal/api"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
+	"github.com/brownster/grafana-assistant/internal/dashboard"
+	"github.com/brownster/grafana-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/llm"
+	"github.com/brownster/grafana-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 const maxToolIterations = 5

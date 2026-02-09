@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/chatops"
+	"github.com/brownster/grafana-assistant/internal/chatops"
 )
 
 func TestParsePostedEvent_ValidMention(t *testing.T) {

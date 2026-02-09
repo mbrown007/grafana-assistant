@@ -8,7 +8,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 var (

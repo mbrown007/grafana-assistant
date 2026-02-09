@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/requestid"
+	"github.com/brownster/grafana-assistant/internal/requestid"
 )
 
 func TestRequestID_GeneratesID(t *testing.T) {

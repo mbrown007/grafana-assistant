@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
-	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/storage"
 )
 
 // UserResolver resolves the Grafana user for a request.

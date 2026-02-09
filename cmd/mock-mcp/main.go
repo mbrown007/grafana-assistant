@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/marcusz/monitoring-assistant/internal/mockserver"
+	"github.com/brownster/grafana-assistant/internal/mockserver"
 )
 
 func main() {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
-	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/storage"
 )
 
 type stubResolver struct {

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
-	"github.com/marcusz/monitoring-assistant/pkg/kb"
+	"github.com/brownster/grafana-assistant/internal/api"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
+	"github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 func (m *Manager) buildKBContext(userMsg string, dashCtx *appcontext.DashboardSummary, reqCtx *api.DashboardContext, preferDashboardMap bool) (string, *api.KBSearchEvidence, *api.VectorSearchEvidence) {

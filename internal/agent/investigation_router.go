@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 const (

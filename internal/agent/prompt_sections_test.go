@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 func TestBuildSystemPrompt_IntentSectionMatrix(t *testing.T) {

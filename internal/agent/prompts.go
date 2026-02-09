@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/api"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 const maxToolHighlights = 12

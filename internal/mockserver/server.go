@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 // Server is a stdio MCP server backed by replay fixtures.

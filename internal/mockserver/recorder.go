@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 // EvalCaseIDHeader is an optional request header used by eval runners to tag

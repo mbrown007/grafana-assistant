@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/grafana"
 )
 
 const sessionIdleTTL = 1 * time.Hour

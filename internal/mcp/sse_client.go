@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
-	"github.com/marcusz/monitoring-assistant/internal/requestid"
+	"github.com/brownster/grafana-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/requestid"
 )
 
 // SSEClient is an MCP client that communicates via the SSE transport protocol.

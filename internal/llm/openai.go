@@ -10,7 +10,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/metrics"
 )
 
 // StreamChunk represents a chunk of streaming response.

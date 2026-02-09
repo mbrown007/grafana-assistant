@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 // IntentClass labels the user request class used for retrieval routing.

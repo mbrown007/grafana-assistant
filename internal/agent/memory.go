@@ -3,7 +3,7 @@ package agent
 import (
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/internal/storage"
 )
 
 const defaultWindowSize = 20

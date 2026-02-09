@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/grafana"
 )
 
 func TestResolveSuccess(t *testing.T) {

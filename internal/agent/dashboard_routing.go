@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	"github.com/marcusz/monitoring-assistant/pkg/kb"
+	"github.com/brownster/grafana-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 func TestAlertmanagerMCP(t *testing.T) {
