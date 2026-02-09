@@ -65,6 +65,7 @@ Main gaps to close:
 | Phase 5 | Eval harness + LLM judge + CI gate | SR + MID + JR | 6-9 days |
 | Phase 6 | Hardening and rollout controls | SR + MID | 4-6 days |
 | Phase 7 | Cloud-parity feature expansion (Tempo/TraceQL deferred) | SR + MID + JR | 7-10 days |
+| Phase 8 | Big Tent architecture alignment (modular prompts, sub-agents, mock evals) | SR + MID + JR | 14-19 days |
 
 ---
 
@@ -115,6 +116,23 @@ Update this table whenever an issue/local ticket is created, status changes, or 
 | P7-3 | SR | `[ ]` | LOCAL-P7-3 | TBD | Add guarded dashboard create/edit action pipeline with patch-first updates |
 | P7-4 | MID | `[ ]` | LOCAL-P7-4 | TBD | Expand incident/on-call action coverage and deep-link workflows |
 | P7-5 | SR | `[ ]` | LOCAL-P7-5 | TBD | Introduce coordinator+specialist multi-agent execution scaffold |
+| P8-1a | SR | `[ ]` | LOCAL-P8-1a | TBD | Intent-specific prompt builder refactor |
+| P8-1b | MID | `[ ]` | LOCAL-P8-1b | TBD | Per-intent tool set selection |
+| P8-1c | MID | `[ ]` | LOCAL-P8-1c | TBD | Prompt token budget metrics by intent |
+| P8-1d | JR | `[ ]` | LOCAL-P8-1d | TBD | Prompt builder tests and intent coverage |
+| P8-2a | MID | `[ ]` | LOCAL-P8-2a | TBD | Alert domain enrichment in formatter |
+| P8-2b | MID | `[ ]` | LOCAL-P8-2b | TBD | Prometheus query result enrichment |
+| P8-2c | JR | `[ ]` | LOCAL-P8-2c | TBD | Loki/log result enrichment |
+| P8-2d | JR | `[ ]` | LOCAL-P8-2d | TBD | Domain formatter tests |
+| P8-3a | SR | `[ ]` | LOCAL-P8-3a | TBD | Mock MCP server with fixture replay |
+| P8-3b | MID | `[ ]` | LOCAL-P8-3b | TBD | Fixture recording from live environment |
+| P8-3c | MID | `[ ]` | LOCAL-P8-3c | TBD | Eval runner mock-mode integration |
+| P8-3d | JR | `[ ]` | LOCAL-P8-3d | TBD | CI workflow for mock-based evals |
+| P8-4a | SR | `[ ]` | LOCAL-P8-4a | TBD | Sub-agent interface and coordinator loop |
+| P8-4b | SR | `[ ]` | LOCAL-P8-4b | TBD | Dashboard specialist sub-agent |
+| P8-4c | SR | `[ ]` | LOCAL-P8-4c | TBD | Investigation specialist sub-agent |
+| P8-4d | MID | `[ ]` | LOCAL-P8-4d | TBD | Sub-agent observability and audit |
+| P8-4e | JR | `[ ]` | LOCAL-P8-4e | TBD | Sub-agent integration tests |
 
 ---
 
@@ -517,6 +535,93 @@ Evidence:
 Deferred note:
 
 - Tempo/TraceQL-specific assistant expansion is intentionally deferred until stack adoption requires it.
+
+---
+
+## Phase 8: Big Tent Architecture Alignment
+
+Phase status: `[ ]`
+
+Goal: Align with Grafana's production agent patterns — modular system prompts, domain-enriched NL formatting, mock eval sandbox, and coordinator+specialist sub-agents.
+
+Full detailed roadmap: [`docs/ROADMAP_PHASE8_BIG_TENT.md`](ROADMAP_PHASE8_BIG_TENT.md)
+
+| Sub-phase | Goal | Owner | Effort |
+|---|---|---|---|
+| P8-1 | Modular intent-specific system prompts | SR + MID | 3-4 days |
+| P8-2 | Domain-enriched NL tool result formatting | MID + JR | 2-3 days |
+| P8-3 | Mock eval sandbox for reproducible testing | SR + MID | 4-5 days |
+| P8-4 | Coordinator + specialist sub-agent scaffold | SR | 5-7 days |
+
+### Tasks
+
+- [ ] `P8-1a` Refactor SystemPrompt into composable intent-specific prompt builder.
+Owner: `SR`
+Done when: `BuildSystemPrompt()` produces different prompts per intent; `how_to_docs` is ≥30% smaller than `live_data`.
+
+- [ ] `P8-1b` Add intent-aware tool set filtering before LLM exposure.
+Owner: `MID`
+Done when: `how_to_docs` sends only KB tools; `dashboard_lookup` sends only search/dashboard tools.
+
+- [ ] `P8-1c` Add prompt token budget metrics by intent class.
+Owner: `MID`
+Done when: Prometheus metrics show prompt size and tool count breakdown by intent.
+
+- [ ] `P8-1d` Add prompt builder tests and intent coverage assertions.
+Owner: `JR`
+Done when: All 5 intent paths have section inclusion/exclusion tests and size regression tests.
+
+- [ ] `P8-2a` Add alert domain enrichment in tool result formatter.
+Owner: `MID`
+Done when: Alert results show severity counts, firing durations, and common label groups.
+
+- [ ] `P8-2b` Add Prometheus query result enrichment.
+Owner: `MID`
+Done when: Prometheus results show metric names, series counts, and value ranges.
+
+- [ ] `P8-2c` Add Loki/log result enrichment.
+Owner: `JR`
+Done when: Loki results show log level distribution, stream counts, and time span.
+
+- [ ] `P8-2d` Add domain formatter tests with realistic fixtures.
+Owner: `JR`
+Done when: Domain detection, enrichment, and generic fallback paths have full coverage.
+
+- [ ] `P8-3a` Build mock MCP server with fixture replay for eval sandbox.
+Owner: `SR`
+Done when: `bin/mock-mcp` replays recorded tool responses via stdio transport.
+
+- [ ] `P8-3b` Add fixture recording from live environment.
+Owner: `MID`
+Done when: Running evals against live stack produces replayable fixture files.
+
+- [ ] `P8-3c` Integrate mock mode into eval runner.
+Owner: `MID`
+Done when: `make eval-baseline-mock` runs full dataset without Docker.
+
+- [ ] `P8-3d` Add CI workflow for mock-based evals.
+Owner: `JR`
+Done when: PR CI runs mock evals without Docker; quality gate still enforced.
+
+- [ ] `P8-4a` Define sub-agent interface and coordinator decision loop.
+Owner: `SR`
+Done when: Coordinator routes high-confidence intents to sub-agents when `sub_agent_mode` flag is on.
+
+- [ ] `P8-4b` Implement dashboard specialist sub-agent.
+Owner: `SR`
+Done when: Dashboard lookups use isolated LLM call with ~200 char prompt and 5-6 tools.
+
+- [ ] `P8-4c` Implement investigation specialist sub-agent.
+Owner: `SR`
+Done when: Incident summaries use isolated investigation LLM call with focused prompt.
+
+- [ ] `P8-4d` Add sub-agent observability and audit trail.
+Owner: `MID`
+Done when: Metrics cover sub-agent invocations, duration, tokens, and errors.
+
+- [ ] `P8-4e` Add sub-agent integration tests.
+Owner: `JR`
+Done when: Coordinator routing, sub-agent isolation, and feature flag toggle have full coverage.
 
 ---
 
