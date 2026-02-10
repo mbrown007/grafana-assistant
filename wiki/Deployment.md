@@ -90,7 +90,7 @@ With stdio transport, the assistant spawns MCP servers as child processes, so no
     For safer rollout defaults, review and tune:
     - `model_profile` (prompt profile selection by model family)
     - `request_budget` (per-request token/tool/cost guardrails)
-    - `feature_flags` (routing/composite/judge-gate/redaction toggles)
+    - `feature_flags` (routing/sub-agent/composite/judge-gate/redaction toggles)
 
 4.  **systemd service:**
     Use the unit file in `deploy/monitoring-assistant.service` as a template.

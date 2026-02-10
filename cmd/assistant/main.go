@@ -225,6 +225,7 @@ func main() {
 		"eval_fixture_record_dir", cfg.EvalFixtureRecordDir,
 		"eval_bypass_auth", cfg.EvalBypassAuth,
 		"feature_routing_mode", cfg.FeatureFlags.RoutingMode,
+		"feature_sub_agent_mode", cfg.FeatureFlags.SubAgentMode,
 		"feature_composite_tool_mode", cfg.FeatureFlags.CompositeToolMode,
 		"feature_judge_gate_mode", cfg.FeatureFlags.JudgeGateMode,
 		"feature_evidence_redaction_mode", cfg.FeatureFlags.EvidenceRedactionMode,
@@ -320,6 +321,7 @@ func main() {
 	// Create agent manager.
 	scratchpadMgr := dashboard.NewManager(grafanaClient, cfg.ScratchpadFolder)
 	routingMode := cfg.FeatureFlags.RoutingMode
+	subAgentMode := cfg.FeatureFlags.SubAgentMode
 	compositeToolMode := cfg.FeatureFlags.CompositeToolMode
 	judgeGateMode := cfg.FeatureFlags.JudgeGateMode
 	evidenceRedactionMode := cfg.FeatureFlags.EvidenceRedactionMode
@@ -346,6 +348,7 @@ func main() {
 			CompletionCostPer1MUSD: cfg.RequestBudget.CompletionCostPer1MUSD,
 		},
 		RoutingMode:           &routingMode,
+		SubAgentMode:          &subAgentMode,
 		CompositeToolMode:     &compositeToolMode,
 		JudgeGateMode:         &judgeGateMode,
 		EvidenceRedactionMode: &evidenceRedactionMode,

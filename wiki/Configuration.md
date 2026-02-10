@@ -96,6 +96,7 @@ These flags allow controlled rollout and fast rollback of major capabilities.
 | Setting | Environment Variable | Description |
 |---|---|---|
 | `feature_flags.routing_mode` | `ASSISTANT_FEATURE_ROUTING_MODE` | Enable/disable schema/dashboard/KB routing behavior. |
+| `feature_flags.sub_agent_mode` | `ASSISTANT_FEATURE_SUB_AGENT_MODE` | Enable/disable coordinator delegation to isolated specialist sub-agent loops. |
 | `feature_flags.composite_tool_mode` | `ASSISTANT_FEATURE_COMPOSITE_TOOL_MODE` | Enable/disable `investigation__manage` composite internal tool exposure and execution. |
 | `feature_flags.judge_gate_mode` | `ASSISTANT_FEATURE_JUDGE_GATE_MODE` | Enable/disable eval quality-gate enforcement behavior. |
 | `feature_flags.evidence_redaction_mode` | `ASSISTANT_FEATURE_EVIDENCE_REDACTION_MODE` | Enable/disable secret redaction for streamed tool/evidence payloads. |

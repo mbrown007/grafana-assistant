@@ -90,6 +90,7 @@ type Config struct {
 // FeatureFlags controls major assistant capabilities for rollout/rollback.
 type FeatureFlags struct {
 	RoutingMode           bool `yaml:"routing_mode"`
+	SubAgentMode          bool `yaml:"sub_agent_mode"`
 	CompositeToolMode     bool `yaml:"composite_tool_mode"`
 	JudgeGateMode         bool `yaml:"judge_gate_mode"`
 	EvidenceRedactionMode bool `yaml:"evidence_redaction_mode"`
@@ -196,6 +197,7 @@ func Load(path string) (*Config, error) {
 		InvestigationToolTimeoutSeconds: 8,
 		FeatureFlags: FeatureFlags{
 			RoutingMode:           true,
+			SubAgentMode:          false,
 			CompositeToolMode:     true,
 			JudgeGateMode:         true,
 			EvidenceRedactionMode: true,
@@ -372,6 +374,9 @@ func Load(path string) (*Config, error) {
 		cfg.RequestBudget.CompletionCostPer1MUSD = n
 	}
 	if err := applyBoolEnv(&cfg.FeatureFlags.RoutingMode, "ASSISTANT_FEATURE_ROUTING_MODE"); err != nil {
+		return nil, err
+	}
+	if err := applyBoolEnv(&cfg.FeatureFlags.SubAgentMode, "ASSISTANT_FEATURE_SUB_AGENT_MODE"); err != nil {
 		return nil, err
 	}
 	if err := applyBoolEnv(&cfg.FeatureFlags.CompositeToolMode, "ASSISTANT_FEATURE_COMPOSITE_TOOL_MODE"); err != nil {

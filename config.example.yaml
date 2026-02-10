@@ -115,6 +115,7 @@ metrics_enabled: true
 # Runtime feature flags for rollout/rollback
 # feature_flags:
 #   routing_mode: true            # Enable schema/dashboard/KB routing strategy
+#   sub_agent_mode: false         # Enable coordinator + specialist sub-agent delegation scaffold
 #   composite_tool_mode: true     # Enable internal investigation__manage tool
 #   judge_gate_mode: true         # Enable eval quality-gate enforcement
 #   evidence_redaction_mode: true # Redact secrets from streamed evidence payloads

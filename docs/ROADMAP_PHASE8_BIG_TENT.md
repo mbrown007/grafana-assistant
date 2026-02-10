@@ -61,7 +61,7 @@ Owner legend: `JR` Junior · `MID` Mid-level · `SR` Senior (architecture/cross-
 | P8-3b | MID | `[x]` | LOCAL-P8-3b | local | Fixture recording middleware + capture script for live runs |
 | P8-3c | MID | `[x]` | LOCAL-P8-3c | local | Added eval-baseline --mock + mock config + make eval-baseline-mock |
 | P8-3d | JR | `[x]` | LOCAL-P8-3d | local | Added PR mock-eval CI job + scheduled/manual live-stack job split |
-| P8-4a | SR | `[ ]` | LOCAL-P8-4a | TBD | Sub-agent interface and coordinator loop |
+| P8-4a | SR | `[x]` | LOCAL-P8-4a | local | Sub-agent interface + coordinator decision/delegation scaffold behind feature flag |
 | P8-4b | SR | `[ ]` | LOCAL-P8-4b | TBD | Dashboard specialist sub-agent |
 | P8-4c | SR | `[ ]` | LOCAL-P8-4c | TBD | Investigation specialist sub-agent |
 | P8-4d | MID | `[ ]` | LOCAL-P8-4d | TBD | Sub-agent observability and audit |
@@ -894,7 +894,7 @@ eval-mock:
 
 ## P8-4: Coordinator + Specialist Sub-Agent Scaffold
 
-Phase status: `[ ]`
+Phase status: `[~]`
 
 **Goal**: Implement the coordinator pattern where complex requests are delegated to specialized sub-agents with isolated LLM calls and focused prompts. This is the most architecturally significant change.
 
@@ -1272,3 +1272,4 @@ Use this format:
 Entries:
 
 - `2026-02-09` Phase planning `P8-*`: Created Phase 8 Big Tent architecture alignment roadmap with 17 tasks across 4 sub-phases. PR: `local`. Owner: `marc`.
+- `2026-02-10` `P8-4a`: Added sub-agent interface/executor, coordinator decision loop, and `sub_agent_mode` feature flag wiring with tests. PR: `local`. Owner: `marc`.
