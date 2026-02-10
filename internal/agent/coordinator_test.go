@@ -106,3 +106,27 @@ func TestCoordinatorDecide(t *testing.T) {
 func containsIgnoreCase(haystack, needle string) bool {
 	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
 }
+
+func TestSynthesizeSubAgentResponse_Investigation(t *testing.T) {
+	decision := CoordinatorDecision{
+		SubAgents: []string{"investigation"},
+		Reason:    "incident summary -> delegate to investigation specialist",
+	}
+	results := []SubAgentResult{
+		{
+			Summary:   "Latency spiked at 14:03 UTC after a deploy; error rate increased to 2.1%.",
+			ToolsUsed: []string{"grafana__query_prometheus", "grafana__query_loki_logs"},
+		},
+	}
+
+	got := synthesizeSubAgentResponse(decision, results)
+	if !containsIgnoreCase(got, "Investigation findings") {
+		t.Fatalf("expected investigation heading, got %q", got)
+	}
+	if !containsIgnoreCase(got, "Evidence sources") {
+		t.Fatalf("expected evidence sources line, got %q", got)
+	}
+	if !containsIgnoreCase(got, "query_prometheus") {
+		t.Fatalf("expected tool reference in synthesis, got %q", got)
+	}
+}

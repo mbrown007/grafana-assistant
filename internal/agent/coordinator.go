@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/brownster/grafana-assistant/internal/api"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
 	"github.com/brownster/grafana-assistant/internal/grafana"
 	"github.com/brownster/grafana-assistant/internal/mcp"
 	"github.com/brownster/grafana-assistant/internal/storage"
@@ -68,6 +69,8 @@ func (m *Manager) handleChatViaSubAgents(
 	sess *storage.Session,
 	intent IntentResult,
 	decision CoordinatorDecision,
+	dashCtx *appcontext.DashboardSummary,
+	schemaContext string,
 	userMessage string,
 	streamFn func(api.StreamChunk),
 ) (string, bool) {
@@ -87,7 +90,7 @@ func (m *Manager) handleChatViaSubAgents(
 
 	results := make([]SubAgentResult, 0, len(decision.SubAgents))
 	for _, name := range decision.SubAgents {
-		subAgent := m.newSubAgentByName(name, intent, req.DashboardContext)
+		subAgent := m.newSubAgentByName(name, intent, req.DashboardContext, dashCtx, schemaContext)
 		if subAgent == nil {
 			slog.WarnContext(ctx, "coordinator skipped unknown sub-agent", "sub_agent", name)
 			continue
@@ -153,17 +156,19 @@ func (m *Manager) handleChatViaSubAgents(
 	return summary, true
 }
 
-func (m *Manager) newSubAgentByName(name string, intent IntentResult, reqCtx *api.DashboardContext) *SubAgent {
+func (m *Manager) newSubAgentByName(name string, intent IntentResult, reqCtx *api.DashboardContext, dashCtx *appcontext.DashboardSummary, schemaContext string) *SubAgent {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "dashboard":
 		return m.newDashboardSubAgent()
 	case "investigation":
-		return &SubAgent{
-			Name:          "investigation",
-			SystemPrompt:  investigationCoordinatorPrompt(reqCtx, intent),
-			Tools:         append([]mcp.Tool(nil), m.tools...),
-			MaxIterations: 5,
+		if reqCtx != nil && strings.TrimSpace(reqCtx.UID) != "" && dashCtx == nil {
+			// Preserve request-level dashboard UID context even when enriched summary is unavailable.
+			dashCtx = &appcontext.DashboardSummary{UID: strings.TrimSpace(reqCtx.UID)}
 		}
+		if strings.TrimSpace(schemaContext) == "" && strings.TrimSpace(intent.Rationale) != "" {
+			schemaContext = "Intent rationale: " + strings.TrimSpace(intent.Rationale)
+		}
+		return m.newInvestigationSubAgent(dashCtx, schemaContext)
 	default:
 		return nil
 	}
@@ -179,26 +184,12 @@ func (m *Manager) snapshotToolClientMap() map[string]mcp.Client {
 	return snapshot
 }
 
-func investigationCoordinatorPrompt(reqCtx *api.DashboardContext, intent IntentResult) string {
-	var b strings.Builder
-	b.WriteString("You are an incident investigation specialist.\n")
-	b.WriteString("Gather evidence from metrics, logs, and alerts, then return a concise findings summary.\n")
-	b.WriteString("Prioritize factual evidence and avoid speculation.\n")
-	if reqCtx != nil && strings.TrimSpace(reqCtx.UID) != "" {
-		b.WriteString("Dashboard UID context: ")
-		b.WriteString(strings.TrimSpace(reqCtx.UID))
-		b.WriteString(".\n")
-	}
-	if strings.TrimSpace(intent.Rationale) != "" {
-		b.WriteString("Intent rationale: ")
-		b.WriteString(strings.TrimSpace(intent.Rationale))
-	}
-	return strings.TrimSpace(b.String())
-}
-
 func synthesizeSubAgentResponse(decision CoordinatorDecision, results []SubAgentResult) string {
 	if len(results) == 1 {
 		res := results[0]
+		if len(decision.SubAgents) == 1 && decision.SubAgents[0] == "investigation" {
+			return synthesizeInvestigationResult(res)
+		}
 		if strings.TrimSpace(res.Summary) != "" {
 			return strings.TrimSpace(res.Summary)
 		}
@@ -229,4 +220,21 @@ func synthesizeSubAgentResponse(decision CoordinatorDecision, results []SubAgent
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func synthesizeInvestigationResult(res SubAgentResult) string {
+	lines := make([]string, 0, 4)
+	if strings.TrimSpace(res.Summary) != "" {
+		lines = append(lines, "Investigation findings:\n"+strings.TrimSpace(res.Summary))
+	}
+	if len(res.ToolsUsed) > 0 {
+		lines = append(lines, "Evidence sources: "+strings.Join(res.ToolsUsed, ", "))
+	}
+	if strings.TrimSpace(res.Error) != "" {
+		lines = append(lines, "Specialist note: "+strings.TrimSpace(res.Error))
+	}
+	if len(lines) == 0 {
+		return "Investigation specialist did not return findings."
+	}
+	return strings.Join(lines, "\n\n")
 }
