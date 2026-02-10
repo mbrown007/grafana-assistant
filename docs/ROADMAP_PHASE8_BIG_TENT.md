@@ -65,7 +65,7 @@ Owner legend: `JR` Junior · `MID` Mid-level · `SR` Senior (architecture/cross-
 | P8-4b | SR | `[x]` | LOCAL-P8-4b | local | Added focused dashboard specialist constructor + coordinator heuristic delegation |
 | P8-4c | SR | `[x]` | LOCAL-P8-4c | local | Added focused investigation specialist sub-agent prompt/context + coordinator synthesis path |
 | P8-4d | MID | `[x]` | LOCAL-P8-4d | local | Added sub-agent metrics, per-invocation audit entries, stream subagent tagging, and dashboard/docs updates |
-| P8-4e | JR | `[ ]` | LOCAL-P8-4e | TBD | Sub-agent integration tests |
+| P8-4e | JR | `[x]` | LOCAL-P8-4e | local | Added sub-agent integration tests for isolation, feature-flag gating, and mock LLM tool/error flows |
 
 ---
 
@@ -894,7 +894,7 @@ eval-mock:
 
 ## P8-4: Coordinator + Specialist Sub-Agent Scaffold
 
-Phase status: `[~]`
+Phase status: `[x]`
 
 **Goal**: Implement the coordinator pattern where complex requests are delegated to specialized sub-agents with isolated LLM calls and focused prompts. This is the most architecturally significant change.
 
@@ -1276,3 +1276,4 @@ Entries:
 - `2026-02-10` `P8-4b`: Added dashboard specialist sub-agent module with focused prompt/tool set and coordinator delegation heuristics + tests. PR: `local`. Owner: `marc`.
 - `2026-02-10` `P8-4c`: Added investigation specialist sub-agent module with focused incident prompt/context and coordinator synthesis output for incident-summary delegation. PR: `local`. Owner: `marc`.
 - `2026-02-10` `P8-4d`: Added sub-agent observability metrics and dashboard panels, stream subagent tagging, and per-invocation audit records (`event_type=subagent_invocation`). PR: `local`. Owner: `marc`.
+- `2026-02-10` `P8-4e`: Added sub-agent integration tests for coordinator decisions, isolation semantics, feature-flag gating, and mock LLM tool/error execution flows. PR: `local`. Owner: `marc`.

@@ -36,11 +36,29 @@ type SubAgent struct {
 	MaxIterations int        // Tool loop limit (typically 3-5).
 }
 
+type subAgentLLM interface {
+	ChatWithOptions(ctx context.Context, messages []openai.ChatCompletionMessage, tools []openai.Tool, opts llm.ChatOptions) (*openai.ChatCompletionMessage, llm.ChatUsage, error)
+}
+
 // Execute runs the sub-agent with an isolated LLM conversation.
 // streamFn emits tool call/result events for UI transparency.
 func (sa *SubAgent) Execute(
 	ctx context.Context,
 	llmClient *llm.Client,
+	mcpClients map[string]mcp.Client,
+	userMessage string,
+	streamFn func(api.StreamChunk),
+) SubAgentResult {
+	var client subAgentLLM
+	if llmClient != nil {
+		client = llmClient
+	}
+	return sa.executeWithClient(ctx, client, mcpClients, userMessage, streamFn)
+}
+
+func (sa *SubAgent) executeWithClient(
+	ctx context.Context,
+	llmClient subAgentLLM,
 	mcpClients map[string]mcp.Client,
 	userMessage string,
 	streamFn func(api.StreamChunk),

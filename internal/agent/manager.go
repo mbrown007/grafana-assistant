@@ -496,7 +496,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		)
 	}
 
-	if m.subAgentModeEnabled() && !coordinatorDecision.UseDirect {
+	if m.shouldUseSubAgents(coordinatorDecision) {
 		delegatedContent, handled := m.handleChatViaSubAgents(ctx, user, req, sess, intent, coordinatorDecision, dashCtx, schemaContext, cleanMessage, streamFn)
 		if handled {
 			m.persistAssistantResponse(ctx, sess, user, delegatedContent)
@@ -968,6 +968,10 @@ func (m *Manager) subAgentModeEnabled() bool {
 		return false
 	}
 	return m.subAgentMode
+}
+
+func (m *Manager) shouldUseSubAgents(decision CoordinatorDecision) bool {
+	return m.subAgentModeEnabled() && !decision.UseDirect && len(decision.SubAgents) > 0
 }
 
 func (m *Manager) compositeToolModeEnabled() bool {
