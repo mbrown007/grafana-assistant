@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 type exploreQuery struct {

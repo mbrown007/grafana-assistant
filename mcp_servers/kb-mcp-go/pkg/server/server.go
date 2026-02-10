@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	kb "github.com/marcusz/monitoring-assistant/pkg/kb"
+	kb "github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 type MCPServer struct {

@@ -1,13 +1,13 @@
-module github.com/marcusz/monitoring-assistant/mcp_servers/kb-mcp-go
+module github.com/brownster/grafana-assistant/mcp_servers/kb-mcp-go
 
 go 1.25.5
 
 require (
-	github.com/marcusz/monitoring-assistant v0.0.0
+	github.com/brownster/grafana-assistant v0.0.0
 	github.com/mark3labs/mcp-go v0.7.0
 )
 
-replace github.com/marcusz/monitoring-assistant => ../..
+replace github.com/brownster/grafana-assistant => ../..
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

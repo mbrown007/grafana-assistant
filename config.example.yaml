@@ -15,7 +15,8 @@
 # ASSISTANT_FEATURE_CHATOPS_ENABLED, ASSISTANT_CHATOPS_PROVIDER,
 # ASSISTANT_CHATOPS_BOT_USER_ID, ASSISTANT_CHATOPS_BOT_USER_NAME,
 # ASSISTANT_CHATOPS_BOT_ORG_ID, ASSISTANT_CHATOPS_MATTERMOST_URL,
-# ASSISTANT_CHATOPS_MATTERMOST_TOKEN, ASSISTANT_CHATOPS_MATTERMOST_TEAM
+# ASSISTANT_CHATOPS_MATTERMOST_TOKEN, ASSISTANT_CHATOPS_MATTERMOST_TEAM,
+# ASSISTANT_EVAL_FIXTURE_RECORD_DIR, ASSISTANT_EVAL_BYPASS_AUTH
 #
 # Secrets can also be placed in a .env file (auto-loaded from working directory).
 
@@ -43,6 +44,13 @@ db_path: "data/assistant.db"
 # Audit log path (JSONL). Ensure the directory exists and is writable.
 # Set to empty string to disable file auditing.
 audit_log_path: "/var/log/grafana-assistant/audit.log"
+
+# Optional: record successful MCP tool responses as eval fixtures for replay.
+# eval_fixture_record_dir: "tests/evals/fixtures"
+
+# Dev/test only: bypass Grafana session auth and use a synthetic eval user.
+# Never enable in production.
+# eval_bypass_auth: false
 
 # Base path to serve the UI/API under (empty = root).
 # Example: "/assistant"
@@ -107,6 +115,7 @@ metrics_enabled: true
 # Runtime feature flags for rollout/rollback
 # feature_flags:
 #   routing_mode: true            # Enable schema/dashboard/KB routing strategy
+#   sub_agent_mode: false         # Enable coordinator + specialist sub-agent delegation scaffold
 #   composite_tool_mode: true     # Enable internal investigation__manage tool
 #   judge_gate_mode: true         # Enable eval quality-gate enforcement
 #   evidence_redaction_mode: true # Redact secrets from streamed evidence payloads

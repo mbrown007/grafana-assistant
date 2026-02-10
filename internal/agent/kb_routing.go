@@ -3,7 +3,7 @@ package agent
 import (
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 type kbRoutingDecision struct {

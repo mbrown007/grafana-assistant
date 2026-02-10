@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 const contextSearchMaxResults = 30

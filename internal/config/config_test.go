@@ -41,6 +41,7 @@ func TestNormalize_MCPToolLists(t *testing.T) {
 func TestLoad_FeatureFlagEnvOverrides(t *testing.T) {
 	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
 	t.Setenv("ASSISTANT_FEATURE_ROUTING_MODE", "false")
+	t.Setenv("ASSISTANT_FEATURE_SUB_AGENT_MODE", "true")
 	t.Setenv("ASSISTANT_FEATURE_COMPOSITE_TOOL_MODE", "off")
 	t.Setenv("ASSISTANT_FEATURE_JUDGE_GATE_MODE", "0")
 	t.Setenv("ASSISTANT_FEATURE_EVIDENCE_REDACTION_MODE", "disabled")
@@ -52,6 +53,9 @@ func TestLoad_FeatureFlagEnvOverrides(t *testing.T) {
 	if cfg.FeatureFlags.RoutingMode {
 		t.Fatal("expected routing_mode=false from env override")
 	}
+	if !cfg.FeatureFlags.SubAgentMode {
+		t.Fatal("expected sub_agent_mode=true from env override")
+	}
 	if cfg.FeatureFlags.CompositeToolMode {
 		t.Fatal("expected composite_tool_mode=false from env override")
 	}
@@ -60,6 +64,32 @@ func TestLoad_FeatureFlagEnvOverrides(t *testing.T) {
 	}
 	if cfg.FeatureFlags.EvidenceRedactionMode {
 		t.Fatal("expected evidence_redaction_mode=false from env override")
+	}
+}
+
+func TestLoad_EvalFixtureRecordDirEnvOverride(t *testing.T) {
+	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
+	t.Setenv("ASSISTANT_EVAL_FIXTURE_RECORD_DIR", " tests/evals/fixtures ")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.EvalFixtureRecordDir != "tests/evals/fixtures" {
+		t.Fatalf("EvalFixtureRecordDir = %q, want %q", cfg.EvalFixtureRecordDir, "tests/evals/fixtures")
+	}
+}
+
+func TestLoad_EvalBypassAuthEnvOverride(t *testing.T) {
+	path := writeTempConfigFile(t, "grafana_url: http://localhost:3000\n")
+	t.Setenv("ASSISTANT_EVAL_BYPASS_AUTH", "true")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.EvalBypassAuth {
+		t.Fatal("expected EvalBypassAuth=true from env")
 	}
 }
 

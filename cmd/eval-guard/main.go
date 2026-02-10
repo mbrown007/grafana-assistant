@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/evals"
+	"github.com/brownster/grafana-assistant/internal/evals"
 )
 
 const defaultGuardOutDir = "tests/evals/results"

@@ -22,6 +22,15 @@ func FormatToolResult(result any) string {
 	}
 
 	normalized := normalizeToolResultValue(result)
+
+	if domainSummary, ok := tryDomainSummary(normalized); ok {
+		details := formatToolResultDetails(normalized)
+		if details == "" {
+			return "Summary: " + domainSummary
+		}
+		return "Summary: " + domainSummary + "\nMachine details:\n" + details
+	}
+
 	summary := buildToolResultSummary(normalized)
 	details := formatToolResultDetails(normalized)
 

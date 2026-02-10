@@ -75,6 +75,7 @@ export interface StreamChunk {
   message?: string;
   session_id?: string;
   tool?: string;
+  subagent?: string;
   reason?: string;
   tool_id?: string;
   arguments?: Record<string, unknown>;
@@ -85,6 +86,7 @@ export interface StreamChunk {
 export interface ToolCall {
   id: string;
   tool: string;
+  subagent?: string;
   reason?: string;
   arguments: Record<string, unknown>;
   output?: unknown;

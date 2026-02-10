@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 func TestClassifyIntent_ByRepresentativePrompts(t *testing.T) {

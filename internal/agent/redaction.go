@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/api"
 )
 
 const redactionMask = "[REDACTED]"

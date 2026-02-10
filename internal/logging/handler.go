@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/marcusz/monitoring-assistant/internal/requestid"
+	"github.com/brownster/grafana-assistant/internal/requestid"
 )
 
 // ContextHandler wraps an slog.Handler to automatically inject the request_id

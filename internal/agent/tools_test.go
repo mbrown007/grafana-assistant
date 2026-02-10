@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/mcp"
 )
 
 func TestMCPToolsToOpenAI(t *testing.T) {
@@ -67,6 +68,71 @@ func TestMCPToolsToOpenAI_Empty(t *testing.T) {
 	result := MCPToolsToOpenAI(nil)
 	if len(result) != 0 {
 		t.Errorf("expected 0 tools, got %d", len(result))
+	}
+}
+
+func TestFilterToolsForIntent_HowToDocsOnlyKB(t *testing.T) {
+	tools := []mcp.Tool{
+		{Name: "grafana__query_prometheus"},
+		{Name: "kb__search_kb"},
+		{Name: "kb__search_kb_semantic"},
+		{Name: "alertmanager__list_alerts"},
+		{Name: "kb__get_kb_section"},
+	}
+
+	filtered := filterToolsForIntent(tools, IntentHowToDocs)
+	got := toolNames(filtered)
+	want := []string{
+		"kb__search_kb",
+		"kb__search_kb_semantic",
+		"kb__get_kb_section",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filtered=%v want=%v", got, want)
+	}
+}
+
+func TestFilterToolsForIntent_DashboardLookupOnlyDashboardTools(t *testing.T) {
+	tools := []mcp.Tool{
+		{Name: "grafana__query_prometheus"},
+		{Name: "grafana__search_dashboards"},
+		{Name: "grafana__get_dashboard_by_uid"},
+		{Name: "grafana__get_dashboard_summary"},
+		{Name: "grafana__get_dashboard_panel_queries"},
+		{Name: "grafana__list_datasources"},
+		{Name: "kb__search_kb_semantic"},
+	}
+
+	filtered := filterToolsForIntent(tools, IntentDashboardLookup)
+	got := toolNames(filtered)
+	want := []string{
+		"grafana__search_dashboards",
+		"grafana__get_dashboard_by_uid",
+		"grafana__get_dashboard_summary",
+		"grafana__get_dashboard_panel_queries",
+		"grafana__list_datasources",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filtered=%v want=%v", got, want)
+	}
+}
+
+func TestFilterToolsForIntent_LiveDataKeepsAllTools(t *testing.T) {
+	tools := []mcp.Tool{
+		{Name: "alertmanager__list_alerts"},
+		{Name: "grafana__search_dashboards"},
+		{Name: "kb__search_kb"},
+		{Name: "grafana__query_prometheus"},
+	}
+
+	filtered := filterToolsForIntent(tools, IntentLiveData)
+	got := toolNames(filtered)
+	want := toolNames(tools)
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filtered=%v want=%v", got, want)
 	}
 }
 
@@ -287,4 +353,12 @@ func TestFindToolClient(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing tool")
 	}
+}
+
+func toolNames(tools []mcp.Tool) []string {
+	names := make([]string, 0, len(tools))
+	for _, t := range tools {
+		names = append(names, t.Name)
+	}
+	return names
 }

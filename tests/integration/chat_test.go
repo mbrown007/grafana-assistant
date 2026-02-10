@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/agent"
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
-	"github.com/marcusz/monitoring-assistant/internal/llm"
-	"github.com/marcusz/monitoring-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/internal/agent"
+	"github.com/brownster/grafana-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/llm"
+	"github.com/brownster/grafana-assistant/internal/storage"
 )
 
 // mockLLMServer creates a mock OpenAI-compatible API server that returns a

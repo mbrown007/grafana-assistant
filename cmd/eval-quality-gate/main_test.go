@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/evals"
+	"github.com/brownster/grafana-assistant/internal/evals"
 )
 
 func TestRenderMarkdown(t *testing.T) {

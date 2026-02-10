@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/api"
+	"github.com/brownster/grafana-assistant/internal/grafana"
 )
 
 type mockContextSearcher struct {

@@ -1,0 +1,42 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "__name__": "http_requests_total",
+          "job": "api",
+          "instance": "api-1"
+        },
+        "values": [
+          [
+            1710200000,
+            "10"
+          ],
+          [
+            1710200300,
+            "18"
+          ]
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "http_requests_total",
+          "job": "api",
+          "instance": "api-2"
+        },
+        "values": [
+          [
+            1710200000,
+            "5"
+          ],
+          [
+            1710200300,
+            "12"
+          ]
+        ]
+      }
+    ]
+  }
+}

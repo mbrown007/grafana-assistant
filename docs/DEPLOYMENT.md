@@ -53,7 +53,7 @@ Copy `config.example.yaml` to `/etc/monitoring-assistant/config.yaml` and adjust
 - `kb_max_sections` / `kb_max_section_chars` (if you want to tune KB context size)
 - `model_profile` (prompt profile selection per model family)
 - `request_budget` (per-request token/tool/cost guardrails)
-- `feature_flags` (routing/composite/judge-gate/redaction rollout controls)
+- `feature_flags` (routing/sub-agent/composite/judge-gate/redaction rollout controls)
 
 Store secrets in `/etc/monitoring-assistant/assistant.env` and set permissions to `600`.
 

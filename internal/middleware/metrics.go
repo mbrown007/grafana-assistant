@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/metrics"
 )
 
 // statusRecorder wraps http.ResponseWriter to capture the status code.

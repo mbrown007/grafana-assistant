@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/config"
-	"github.com/marcusz/monitoring-assistant/internal/middleware"
+	"github.com/brownster/grafana-assistant/internal/config"
+	"github.com/brownster/grafana-assistant/internal/middleware"
 )
 
 // testGrafanaURL returns the Grafana URL from the environment or skips the test.

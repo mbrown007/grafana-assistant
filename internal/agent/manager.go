@@ -13,15 +13,15 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/api"
-	appcontext "github.com/marcusz/monitoring-assistant/internal/context"
-	"github.com/marcusz/monitoring-assistant/internal/dashboard"
-	"github.com/marcusz/monitoring-assistant/internal/grafana"
-	"github.com/marcusz/monitoring-assistant/internal/llm"
-	"github.com/marcusz/monitoring-assistant/internal/mcp"
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
-	"github.com/marcusz/monitoring-assistant/internal/storage"
-	"github.com/marcusz/monitoring-assistant/pkg/kb"
+	"github.com/brownster/grafana-assistant/internal/api"
+	appcontext "github.com/brownster/grafana-assistant/internal/context"
+	"github.com/brownster/grafana-assistant/internal/dashboard"
+	"github.com/brownster/grafana-assistant/internal/grafana"
+	"github.com/brownster/grafana-assistant/internal/llm"
+	"github.com/brownster/grafana-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/storage"
+	"github.com/brownster/grafana-assistant/pkg/kb"
 )
 
 const maxToolIterations = 5
@@ -58,6 +58,7 @@ type Manager struct {
 	kbEmbedder         *kb.Embedder
 
 	routingMode           bool
+	subAgentMode          bool
 	compositeToolMode     bool
 	judgeGateMode         bool
 	evidenceRedactionMode bool
@@ -83,6 +84,7 @@ type ManagerConfig struct {
 	RequestBudget            RequestBudget
 
 	RoutingMode           *bool
+	SubAgentMode          *bool
 	CompositeToolMode     *bool
 	JudgeGateMode         *bool
 	EvidenceRedactionMode *bool
@@ -119,6 +121,7 @@ func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcon
 		toolClientByName:         map[string]mcp.Client{},
 		investigationToolTimeout: cfg.InvestigationToolTimeout,
 		routingMode:              boolOrDefault(cfg.RoutingMode, true),
+		subAgentMode:             boolOrDefault(cfg.SubAgentMode, false),
 		compositeToolMode:        boolOrDefault(cfg.CompositeToolMode, true),
 		judgeGateMode:            boolOrDefault(cfg.JudgeGateMode, true),
 		evidenceRedactionMode:    boolOrDefault(cfg.EvidenceRedactionMode, true),
@@ -133,6 +136,7 @@ func NewManager(llmClient *llm.Client, mcpClients []mcp.Client, enricher *appcon
 
 	slog.Info("agent feature flags resolved",
 		"routing_mode", m.routingModeEnabled(),
+		"sub_agent_mode", m.subAgentModeEnabled(),
 		"composite_tool_mode", m.compositeToolModeEnabled(),
 		"judge_gate_mode", m.judgeGateModeEnabled(),
 		"evidence_redaction_mode", m.evidenceRedactionModeEnabled(),
@@ -196,6 +200,28 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		"intent_confidence", intent.Confidence,
 		"intent_rationale", intent.Rationale,
 	)
+	cleanMessage := sanitizeInput(req.Message)
+	coordinatorDecision := CoordinatorDecision{
+		UseDirect: true,
+		Reason:    "sub-agent mode disabled",
+	}
+	if m.subAgentModeEnabled() {
+		coordinatorDecision = m.coordinatorDecide(intent, cleanMessage)
+		slog.InfoContext(ctx, "coordinator decision evaluated",
+			"event", "coordinator_decision",
+			"intent_label", intent.Label,
+			"intent_confidence", intent.Confidence,
+			"use_direct", coordinatorDecision.UseDirect,
+			"sub_agents", coordinatorDecision.SubAgents,
+			"reason", coordinatorDecision.Reason,
+		)
+	}
+
+	intentScopedMCPTools := m.tools
+	if m.routingModeEnabled() {
+		intentScopedMCPTools = filterToolsForIntent(intentScopedMCPTools, intent.Label)
+		intentScopedMCPTools = orderMCPToolsForIntent(intentScopedMCPTools, intent.Label)
+	}
 
 	// 1. Enrich dashboard context if UID is provided.
 	var dashCtx *appcontext.DashboardSummary
@@ -208,8 +234,15 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		}
 	}
 
-	// 2. Build system prompt.
-	systemPrompt := SystemPrompt(dashCtx, req.DashboardContext, m.tools, m.compositeToolModeEnabled(), m.promptProfile)
+	// 2. Build system prompt (intent-aware).
+	systemPrompt := BuildSystemPrompt(PromptContext{
+		Intent:            intent.Label,
+		DashboardSummary:  dashCtx,
+		DashboardContext:  req.DashboardContext,
+		Tools:             intentScopedMCPTools,
+		CompositeToolMode: m.compositeToolModeEnabled(),
+		Profile:           m.promptProfile,
+	})
 
 	// 3. Load or create session, build memory.
 	mem := NewMemory(systemPrompt, 0)
@@ -290,7 +323,8 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		promptMeta := map[string]any{
 			"prompt_length":         len(systemPrompt),
 			"has_dashboard_context": dashCtx != nil,
-			"tool_count":            len(m.tools),
+			"tool_count":            len(intentScopedMCPTools),
+			"tool_count_total":      len(m.tools),
 			"intent_label":          intent.Label,
 			"intent_confidence":     intent.Confidence,
 			"intent_rationale":      intent.Rationale,
@@ -312,7 +346,6 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 4. Add user message (sanitize control characters).
-	cleanMessage := sanitizeInput(req.Message)
 	var (
 		dashboardLookupContext    string
 		dashboardSemanticFallback bool
@@ -463,14 +496,22 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 		)
 	}
 
-	// 5. Prepare OpenAI tools.
-	orderedMCPTools := m.tools
-	if m.routingModeEnabled() {
-		orderedMCPTools = orderMCPToolsForIntent(m.tools, intent.Label)
+	if m.shouldUseSubAgents(coordinatorDecision) {
+		delegatedContent, handled := m.handleChatViaSubAgents(ctx, user, req, sess, intent, coordinatorDecision, dashCtx, schemaContext, cleanMessage, streamFn)
+		if handled {
+			m.persistAssistantResponse(ctx, sess, user, delegatedContent)
+			return
+		}
 	}
-	openaiTools := append(MCPToolsToOpenAI(orderedMCPTools), selectInternalTools(m.compositeToolModeEnabled(), m.promptProfile)...)
+
+	// 5. Prepare OpenAI tools.
+	openaiTools := append(MCPToolsToOpenAI(intentScopedMCPTools), selectInternalTools(m.compositeToolModeEnabled(), m.promptProfile)...)
+	intentLabel := string(intent.Label)
 	metrics.PromptChars.Observe(float64(len(systemPrompt)))
+	metrics.PromptCharsByIntent.WithLabelValues(intentLabel).Observe(float64(len(systemPrompt)))
 	metrics.PromptToolCount.Observe(float64(len(openaiTools)))
+	metrics.PromptToolCountByIntent.WithLabelValues(intentLabel).Observe(float64(len(openaiTools)))
+	metrics.PromptToolCountFiltered.Observe(float64(len(intentScopedMCPTools)))
 
 	// 6. Agent loop (tool calling iterations).
 	var (
@@ -718,34 +759,7 @@ func (m *Manager) HandleChat(ctx context.Context, user *grafana.User, req api.Ch
 	}
 
 	// 7. Persist assistant response.
-	if sess != nil && finalContent != "" {
-		createdAt := time.Now()
-		_ = m.store.AddMessage(ctx, &storage.Message{
-			ID:        fmt.Sprintf("%s-%d-assistant", sess.ID, createdAt.UnixMilli()),
-			SessionID: sess.ID,
-			Role:      "assistant",
-			Content:   finalContent,
-			CreatedAt: createdAt,
-		})
-		_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
-			ID:           fmt.Sprintf("%s-%d-audit-assistant", sess.ID, createdAt.UnixMilli()),
-			SessionID:    sess.ID,
-			UserID:       user.ID,
-			OrgID:        user.OrgID,
-			DashboardUID: sess.DashboardUID,
-			EventType:    "assistant_response",
-			Response:     finalContent,
-			CreatedAt:    createdAt,
-		})
-		slog.InfoContext(ctx, "LLM response sent",
-			"event", "assistant_response",
-			"session_id", sess.ID,
-			"user_id", user.ID,
-			"org_id", user.OrgID,
-			"dashboard_uid", sess.DashboardUID,
-			"message", finalContent,
-		)
-	}
+	m.persistAssistantResponse(ctx, sess, user, finalContent)
 }
 
 // streamToClient consumes an LLM stream channel and forwards chunks to the SSE callback.
@@ -949,6 +963,17 @@ func (m *Manager) routingModeEnabled() bool {
 	return m.routingMode
 }
 
+func (m *Manager) subAgentModeEnabled() bool {
+	if !m.flagsInitialized {
+		return false
+	}
+	return m.subAgentMode
+}
+
+func (m *Manager) shouldUseSubAgents(decision CoordinatorDecision) bool {
+	return m.subAgentModeEnabled() && !decision.UseDirect && len(decision.SubAgents) > 0
+}
+
 func (m *Manager) compositeToolModeEnabled() bool {
 	if !m.flagsInitialized {
 		return true
@@ -988,6 +1013,38 @@ func marshalAuditValue(value any) string {
 		}
 		return string(data)
 	}
+}
+
+func (m *Manager) persistAssistantResponse(ctx context.Context, sess *storage.Session, user *grafana.User, content string) {
+	if sess == nil || user == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	createdAt := time.Now()
+	_ = m.store.AddMessage(ctx, &storage.Message{
+		ID:        fmt.Sprintf("%s-%d-assistant", sess.ID, createdAt.UnixMilli()),
+		SessionID: sess.ID,
+		Role:      "assistant",
+		Content:   content,
+		CreatedAt: createdAt,
+	})
+	_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
+		ID:           fmt.Sprintf("%s-%d-audit-assistant", sess.ID, createdAt.UnixMilli()),
+		SessionID:    sess.ID,
+		UserID:       user.ID,
+		OrgID:        user.OrgID,
+		DashboardUID: sess.DashboardUID,
+		EventType:    "assistant_response",
+		Response:     content,
+		CreatedAt:    createdAt,
+	})
+	slog.InfoContext(ctx, "LLM response sent",
+		"event", "assistant_response",
+		"session_id", sess.ID,
+		"user_id", user.ID,
+		"org_id", user.OrgID,
+		"dashboard_uid", sess.DashboardUID,
+		"message", content,
+	)
 }
 
 func (m *Manager) invokeMCPTool(ctx context.Context, name string, args map[string]any) (any, error) {

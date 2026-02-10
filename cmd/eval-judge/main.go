@@ -15,7 +15,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
-	"github.com/marcusz/monitoring-assistant/internal/evals"
+	"github.com/brownster/grafana-assistant/internal/evals"
 )
 
 const (

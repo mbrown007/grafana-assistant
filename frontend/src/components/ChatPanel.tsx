@@ -157,7 +157,8 @@ function parseToolResultSummary(result: unknown): {
 }
 
 function timelineEventsFromToolChunk(chunk: StreamChunk): Array<Omit<TimelineStep, 'id' | 'order' | 'timestamp'>> {
-  const toolName = chunk.tool || 'tool';
+  const baseToolName = chunk.tool || 'tool';
+  const toolName = chunk.subagent ? `${chunk.subagent}:${baseToolName}` : baseToolName;
   const events: Array<Omit<TimelineStep, 'id' | 'order' | 'timestamp'>> = [];
 
   if (chunk.arguments && Object.keys(chunk.arguments).length > 0) {
@@ -617,6 +618,7 @@ export function ChatPanel({ dashboardContext, onHide, onNavigate }: ChatPanelPro
             const toolCall: ToolCall = {
               id: toolId,
               tool: chunk.tool || existingCall?.tool || 'tool',
+              subagent: chunk.subagent || existingCall?.subagent,
               reason: nextReason,
               arguments: nextArguments,
               output: chunk.result ?? existingCall?.output,

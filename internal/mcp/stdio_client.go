@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/marcusz/monitoring-assistant/internal/metrics"
+	"github.com/brownster/grafana-assistant/internal/metrics"
 )
 
 // StdioConfig describes how to launch an MCP server over stdio.

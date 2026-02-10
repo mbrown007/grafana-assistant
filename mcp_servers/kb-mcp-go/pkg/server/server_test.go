@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	kb "github.com/marcusz/monitoring-assistant/pkg/kb"
+	kb "github.com/brownster/grafana-assistant/pkg/kb"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 

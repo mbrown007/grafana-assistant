@@ -96,11 +96,37 @@ var (
 		},
 	)
 
+	PromptCharsByIntent = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_chars_by_intent",
+			Help:    "System prompt character count by intent class.",
+			Buckets: []float64{500, 1000, 2000, 3000, 4000, 6000, 8000, 10000},
+		},
+		[]string{"intent"},
+	)
+
 	PromptToolCount = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "assistant_prompt_tool_count",
 			Help:    "Number of tools exposed to the LLM per chat request.",
 			Buckets: []float64{0, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192},
+		},
+	)
+
+	PromptToolCountByIntent = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_tool_count_by_intent",
+			Help:    "Number of tools exposed to the LLM by intent class.",
+			Buckets: []float64{0, 2, 5, 10, 15, 20, 30, 40},
+		},
+		[]string{"intent"},
+	)
+
+	PromptToolCountFiltered = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assistant_prompt_tool_count_filtered",
+			Help:    "Number of MCP tools selected after intent-based filtering per chat request.",
+			Buckets: []float64{0, 1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192},
 		},
 	)
 
@@ -118,6 +144,40 @@ var (
 			Help:    "Estimated per-request LLM cost (USD) observed during tool loop iterations.",
 			Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1},
 		},
+	)
+
+	SubAgentInvocationsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assistant_subagent_invocations_total",
+			Help: "Total sub-agent invocations by agent name.",
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_subagent_duration_seconds",
+			Help:    "Sub-agent execution duration in seconds.",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 20, 30},
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentTokensUsed = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_subagent_tokens_used",
+			Help:    "Tokens consumed by sub-agent calls.",
+			Buckets: []float64{100, 500, 1000, 2000, 5000, 10000},
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assistant_subagent_errors_total",
+			Help: "Sub-agent errors by agent name.",
+		},
+		[]string{"agent_name"},
 	)
 
 	MCPToolCallsTotal = prometheus.NewCounterVec(
@@ -159,9 +219,16 @@ func init() {
 		LLMRequestDuration,
 		LLMTokensTotal,
 		PromptChars,
+		PromptCharsByIntent,
 		PromptToolCount,
+		PromptToolCountByIntent,
+		PromptToolCountFiltered,
 		RequestBudgetTripsTotal,
 		RequestBudgetEstimatedCostUSD,
+		SubAgentInvocationsTotal,
+		SubAgentDurationSeconds,
+		SubAgentTokensUsed,
+		SubAgentErrorsTotal,
 		MCPToolCallsTotal,
 		MCPToolCallDuration,
 		ErrorsTotal,

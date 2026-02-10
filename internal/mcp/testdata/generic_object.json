@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "rows": [
+    {
+      "name": "api",
+      "errors": 2
+    }
+  ],
+  "metadata": {
+    "source": "unit-test"
+  }
+}

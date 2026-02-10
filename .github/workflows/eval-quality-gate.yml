@@ -3,6 +3,8 @@ name: Eval Quality Gate
 on:
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: "15 4 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -34,10 +36,118 @@ permissions:
   contents: read
 
 jobs:
-  eval-quality-gate:
-    name: Eval Quality Gate
+  eval-quality-gate-mock:
+    name: Eval Quality Gate (Mock)
     # Secrets are unavailable for fork PRs.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ASSISTANT_OPENAI_API_KEY: ${{ secrets.ASSISTANT_OPENAI_API_KEY }}
+      ASSISTANT_OPENAI_MODEL: ${{ vars.ASSISTANT_OPENAI_MODEL || 'gpt-4o-mini' }}
+      EVAL_LIMIT: ${{ github.event.inputs.limit || vars.ASSISTANT_EVAL_LIMIT || '12' }}
+      EVAL_MIN_PASS_RATE: ${{ github.event.inputs.min_pass_rate || vars.ASSISTANT_EVAL_MIN_PASS_RATE || '0.85' }}
+      EVAL_MAX_HALLUCINATION_HARD_FAILURES: ${{ github.event.inputs.max_hallucination_hard_failures || vars.ASSISTANT_EVAL_MAX_HALLUCINATION_HARD_FAILURES || '0' }}
+      EVAL_MAX_GUARD_FAILED_CASES: ${{ github.event.inputs.max_guard_failed_cases || vars.ASSISTANT_EVAL_MAX_GUARD_FAILED_CASES || '0' }}
+      EVAL_MAX_GUARD_VIOLATIONS_TOTAL: ${{ github.event.inputs.max_guard_violations_total || vars.ASSISTANT_EVAL_MAX_GUARD_VIOLATIONS_TOTAL || '0' }}
+      EVAL_MAX_JUDGE_ERROR_CASES: ${{ github.event.inputs.max_judge_error_cases || vars.ASSISTANT_EVAL_MAX_JUDGE_ERROR_CASES || '0' }}
+      ASSISTANT_FEATURE_JUDGE_GATE_MODE: ${{ vars.ASSISTANT_FEATURE_JUDGE_GATE_MODE || 'true' }}
+      EVAL_OUT_DIR: tests/evals/results/ci-mock-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Verify eval prerequisites
+        run: |
+          if [[ -z "${ASSISTANT_OPENAI_API_KEY:-}" ]]; then
+            echo "ASSISTANT_OPENAI_API_KEY secret is required for eval quality gate." >&2
+            exit 1
+          fi
+          if [[ ! -f "tests/evals/config.mock.yaml" ]]; then
+            echo "tests/evals/config.mock.yaml is required for mock eval run." >&2
+            exit 1
+          fi
+          mkdir -p "${EVAL_OUT_DIR}"
+
+      - name: Build assistant + mock MCP
+        run: make build mock-mcp-build
+
+      - name: Run baseline eval (mock mode)
+        id: baseline
+        run: |
+          ASSISTANT_OPENAI_API_KEY="${ASSISTANT_OPENAI_API_KEY}" \
+          ASSISTANT_OPENAI_MODEL="${ASSISTANT_OPENAI_MODEL}" \
+          ./scripts/eval_baseline.sh \
+            --mock \
+            --out-dir "${EVAL_OUT_DIR}" \
+            --limit "${EVAL_LIMIT}" \
+            --timeout 90 \
+            --delay-ms 50
+          baseline_report="$(ls -1t "${EVAL_OUT_DIR}"/baseline-*.json | head -n1)"
+          if [[ -z "${baseline_report}" ]]; then
+            echo "baseline report not found" >&2
+            exit 1
+          fi
+          echo "baseline_report=${baseline_report}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run judge scoring
+        run: |
+          ./scripts/eval_judge.sh \
+            --run-artifact "${{ steps.baseline.outputs.baseline_report }}" \
+            --out "${EVAL_OUT_DIR}/judge.json" \
+            --timeout 90 \
+            --delay-ms 75 \
+            --max-completion-tokens 1200
+
+      - name: Run deterministic guards
+        run: |
+          ./scripts/eval_guard.sh \
+            --run-artifact "${{ steps.baseline.outputs.baseline_report }}" \
+            --out "${EVAL_OUT_DIR}/guard.json" \
+            --allow-failures
+
+      - name: Enforce quality gate thresholds
+        run: |
+          ./scripts/eval_quality_gate.sh \
+            --judge-report "${EVAL_OUT_DIR}/judge.json" \
+            --guard-report "${EVAL_OUT_DIR}/guard.json" \
+            --out "${EVAL_OUT_DIR}/quality-gate.json" \
+            --summary-md "${EVAL_OUT_DIR}/quality-gate.md" \
+            --judge-gate-mode "${ASSISTANT_FEATURE_JUDGE_GATE_MODE}" \
+            --min-pass-rate "${EVAL_MIN_PASS_RATE}" \
+            --max-hallucination-hard-failures "${EVAL_MAX_HALLUCINATION_HARD_FAILURES}" \
+            --max-guard-failed-cases "${EVAL_MAX_GUARD_FAILED_CASES}" \
+            --max-guard-violations-total "${EVAL_MAX_GUARD_VIOLATIONS_TOTAL}" \
+            --max-judge-error-cases "${EVAL_MAX_JUDGE_ERROR_CASES}"
+
+      - name: Publish gate summary
+        if: always()
+        run: |
+          if [[ -f "${EVAL_OUT_DIR}/quality-gate.md" ]]; then
+            cat "${EVAL_OUT_DIR}/quality-gate.md" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-quality-gate-mock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.EVAL_OUT_DIR }}/
+          if-no-files-found: warn
+
+  eval-quality-gate-live:
+    name: Eval Quality Gate (Live Stack)
+    # Keep live-stack Docker evals as a less-frequent check.
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -50,7 +160,7 @@ jobs:
       EVAL_MAX_GUARD_VIOLATIONS_TOTAL: ${{ github.event.inputs.max_guard_violations_total || vars.ASSISTANT_EVAL_MAX_GUARD_VIOLATIONS_TOTAL || '0' }}
       EVAL_MAX_JUDGE_ERROR_CASES: ${{ github.event.inputs.max_judge_error_cases || vars.ASSISTANT_EVAL_MAX_JUDGE_ERROR_CASES || '0' }}
       ASSISTANT_FEATURE_JUDGE_GATE_MODE: ${{ vars.ASSISTANT_FEATURE_JUDGE_GATE_MODE || 'true' }}
-      EVAL_OUT_DIR: tests/evals/results/ci-${{ github.run_id }}-${{ github.run_attempt }}
+      EVAL_OUT_DIR: tests/evals/results/ci-live-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
@@ -191,7 +301,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-quality-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: eval-quality-gate-live-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ env.EVAL_OUT_DIR }}/
             .mcp-alertmanager.log

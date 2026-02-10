@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"syscall"
 
-	mcpserver "github.com/marcusz/monitoring-assistant/mcp_servers/kb-mcp-go/pkg/server"
-	kb "github.com/marcusz/monitoring-assistant/pkg/kb"
+	mcpserver "github.com/brownster/grafana-assistant/mcp_servers/kb-mcp-go/pkg/server"
+	kb "github.com/brownster/grafana-assistant/pkg/kb"
 	"github.com/mark3labs/mcp-go/server"
 )
 

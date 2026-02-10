@@ -1,0 +1,31 @@
+{
+  "datasource": "alertmanager",
+  "alerts": [
+    {
+      "state": "firing",
+      "severity": "critical",
+      "startsAt": "2025-02-01T10:00:00Z",
+      "labels": {
+        "job": "api",
+        "alertname": "HighLatency"
+      }
+    },
+    {
+      "state": "pending",
+      "severity": "warning",
+      "startsAt": "2025-02-01T10:05:00Z",
+      "labels": {
+        "job": "api",
+        "alertname": "ErrorRate"
+      }
+    },
+    {
+      "state": "resolved",
+      "labels": {
+        "job": "worker",
+        "severity": "info",
+        "alertname": "WorkerLag"
+      }
+    }
+  ]
+}

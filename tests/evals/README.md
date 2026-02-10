@@ -39,6 +39,12 @@ From repo root:
 scripts/eval_baseline.sh
 ```
 
+Mock replay mode (no Docker/Grafana auth required):
+
+```bash
+make eval-baseline-mock
+```
+
 Filter by category:
 
 ```bash

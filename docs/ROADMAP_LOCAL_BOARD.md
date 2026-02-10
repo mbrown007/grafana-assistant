@@ -46,11 +46,28 @@ This board mirrors the roadmap tracking matrix and is the local-first tracker un
 | P6-3 | LOCAL-P6-3 | MID | `[x]` |
 | P6-4 | LOCAL-P6-4 | JR | `[ ]` |
 | P6-5 | LOCAL-P6-5 | SR | `[ ]` |
-| P7-1 | LOCAL-P7-1 | SR | `[ ]` |
+| P7-1 | LOCAL-P7-1 | SR | `[x]` |
 | P7-2 | LOCAL-P7-2 | MID | `[x]` |
 | P7-3 | LOCAL-P7-3 | SR | `[ ]` |
 | P7-4 | LOCAL-P7-4 | MID | `[ ]` |
 | P7-5 | LOCAL-P7-5 | SR | `[ ]` |
+| P8-1a | LOCAL-P8-1a | SR | `[ ]` |
+| P8-1b | LOCAL-P8-1b | MID | `[ ]` |
+| P8-1c | LOCAL-P8-1c | MID | `[ ]` |
+| P8-1d | LOCAL-P8-1d | JR | `[ ]` |
+| P8-2a | LOCAL-P8-2a | MID | `[ ]` |
+| P8-2b | LOCAL-P8-2b | MID | `[ ]` |
+| P8-2c | LOCAL-P8-2c | JR | `[ ]` |
+| P8-2d | LOCAL-P8-2d | JR | `[ ]` |
+| P8-3a | LOCAL-P8-3a | SR | `[ ]` |
+| P8-3b | LOCAL-P8-3b | MID | `[ ]` |
+| P8-3c | LOCAL-P8-3c | MID | `[ ]` |
+| P8-3d | LOCAL-P8-3d | JR | `[ ]` |
+| P8-4a | LOCAL-P8-4a | SR | `[ ]` |
+| P8-4b | LOCAL-P8-4b | SR | `[ ]` |
+| P8-4c | LOCAL-P8-4c | SR | `[ ]` |
+| P8-4d | LOCAL-P8-4d | MID | `[ ]` |
+| P8-4e | LOCAL-P8-4e | JR | `[ ]` |
 
 ## Working Rules
 

@@ -50,6 +50,7 @@ type StreamChunk struct {
 	Message   string                 `json:"message,omitempty"`
 	SessionID string                 `json:"session_id,omitempty"`
 	Tool      string                 `json:"tool,omitempty"`
+	SubAgent  string                 `json:"subagent,omitempty"`
 	Reason    string                 `json:"reason,omitempty"`
 	ToolID    string                 `json:"tool_id,omitempty"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`

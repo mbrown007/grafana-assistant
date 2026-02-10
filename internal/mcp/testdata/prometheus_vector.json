@@ -1,0 +1,30 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "up",
+          "job": "api",
+          "instance": "api-1"
+        },
+        "value": [
+          1710200300,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "job": "worker",
+          "instance": "worker-1"
+        },
+        "value": [
+          1710200300,
+          "0"
+        ]
+      }
+    ]
+  }
+}
