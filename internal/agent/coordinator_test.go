@@ -38,6 +38,16 @@ func TestCoordinatorDecide(t *testing.T) {
 			wantReasonContains: "dashboard lookup",
 		},
 		{
+			name: "dashboard_high_confidence_with_analysis_signals_uses_direct",
+			intent: IntentResult{
+				Label:      IntentDashboardLookup,
+				Confidence: 0.95,
+			},
+			message:            "find dashboard for API latency and explain why it spiked",
+			wantUseDirect:      true,
+			wantReasonContains: "analysis signals",
+		},
+		{
 			name: "incident_summary_delegates_investigation_subagent",
 			intent: IntentResult{
 				Label:      IntentIncidentSummary,

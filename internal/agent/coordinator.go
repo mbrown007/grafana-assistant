@@ -36,6 +36,12 @@ func (m *Manager) coordinatorDecide(intent IntentResult, message string) Coordin
 	}
 
 	if intent.Confidence >= 0.90 && intent.Label == IntentDashboardLookup {
+		if !isDashboardLookupOnlyRequest(message) {
+			return CoordinatorDecision{
+				UseDirect: true,
+				Reason:    "dashboard lookup with analysis signals -> direct path",
+			}
+		}
 		return CoordinatorDecision{
 			SubAgents: []string{"dashboard"},
 			Reason:    "high-confidence dashboard lookup -> delegate to specialist",
@@ -150,13 +156,7 @@ func (m *Manager) handleChatViaSubAgents(
 func (m *Manager) newSubAgentByName(name string, intent IntentResult, reqCtx *api.DashboardContext) *SubAgent {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "dashboard":
-		tools := filterToolsForIntent(m.tools, IntentDashboardLookup)
-		return &SubAgent{
-			Name:          "dashboard",
-			SystemPrompt:  dashboardCoordinatorPrompt(),
-			Tools:         tools,
-			MaxIterations: 3,
-		}
+		return m.newDashboardSubAgent()
 	case "investigation":
 		return &SubAgent{
 			Name:          "investigation",
@@ -177,13 +177,6 @@ func (m *Manager) snapshotToolClientMap() map[string]mcp.Client {
 		snapshot[name] = client
 	}
 	return snapshot
-}
-
-func dashboardCoordinatorPrompt() string {
-	return strings.TrimSpace(`You are a dashboard specialist.
-Find dashboards relevant to the user's request and verify matches with available tools.
-Return a concise summary with dashboard title, UID, folder, and why it matches.
-If no suitable dashboard exists, say so clearly.`)
 }
 
 func investigationCoordinatorPrompt(reqCtx *api.DashboardContext, intent IntentResult) string {
