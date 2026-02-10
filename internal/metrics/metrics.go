@@ -146,6 +146,40 @@ var (
 		},
 	)
 
+	SubAgentInvocationsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assistant_subagent_invocations_total",
+			Help: "Total sub-agent invocations by agent name.",
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_subagent_duration_seconds",
+			Help:    "Sub-agent execution duration in seconds.",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 20, 30},
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentTokensUsed = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "assistant_subagent_tokens_used",
+			Help:    "Tokens consumed by sub-agent calls.",
+			Buckets: []float64{100, 500, 1000, 2000, 5000, 10000},
+		},
+		[]string{"agent_name"},
+	)
+
+	SubAgentErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assistant_subagent_errors_total",
+			Help: "Sub-agent errors by agent name.",
+		},
+		[]string{"agent_name"},
+	)
+
 	MCPToolCallsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "assistant_mcp_tool_calls_total",
@@ -191,6 +225,10 @@ func init() {
 		PromptToolCountFiltered,
 		RequestBudgetTripsTotal,
 		RequestBudgetEstimatedCostUSD,
+		SubAgentInvocationsTotal,
+		SubAgentDurationSeconds,
+		SubAgentTokensUsed,
+		SubAgentErrorsTotal,
 		MCPToolCallsTotal,
 		MCPToolCallDuration,
 		ErrorsTotal,

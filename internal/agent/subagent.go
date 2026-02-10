@@ -5,24 +5,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
 	"github.com/brownster/grafana-assistant/internal/api"
 	"github.com/brownster/grafana-assistant/internal/llm"
 	"github.com/brownster/grafana-assistant/internal/mcp"
+	"github.com/brownster/grafana-assistant/internal/metrics"
 )
 
 const defaultSubAgentIterations = 3
 
 // SubAgentResult is the structured output of a sub-agent execution.
 type SubAgentResult struct {
-	Summary    string            // NL summary for coordinator synthesis.
-	ToolsUsed  []string          // Tool names called by this sub-agent.
-	TokensUsed int               // Prompt + completion tokens consumed.
-	Artifacts  []any             // Any artifacts produced by the sub-agent.
-	Metadata   map[string]string // Optional structured metadata.
-	Error      string            // Non-empty when execution fails.
+	Summary         string            // NL summary for coordinator synthesis.
+	ToolsUsed       []string          // Tool names called by this sub-agent.
+	TokensUsed      int               // Prompt + completion tokens consumed.
+	DurationSeconds float64           // End-to-end execution duration.
+	Artifacts       []any             // Any artifacts produced by the sub-agent.
+	Metadata        map[string]string // Optional structured metadata.
+	Error           string            // Non-empty when execution fails.
 }
 
 // SubAgent executes an isolated LLM call chain for a specific domain.
@@ -42,19 +45,31 @@ func (sa *SubAgent) Execute(
 	userMessage string,
 	streamFn func(api.StreamChunk),
 ) SubAgentResult {
-	result := SubAgentResult{
-		Metadata: map[string]string{},
+	startedAt := time.Now()
+	agentName := "unknown"
+	if sa != nil {
+		if candidate := strings.TrimSpace(sa.Name); candidate != "" {
+			agentName = candidate
+		}
 	}
+	metrics.SubAgentInvocationsTotal.WithLabelValues(agentName).Inc()
+
+	result := SubAgentResult{
+		Metadata: map[string]string{
+			"agent_name": agentName,
+		},
+	}
+	defer observeSubAgentExecutionMetrics(agentName, startedAt, &result)
+
 	if sa == nil {
 		result.Error = "sub-agent configuration is nil"
 		return result
 	}
 
-	agentName := strings.TrimSpace(sa.Name)
-	if agentName == "" {
+	if agentName == "unknown" {
 		agentName = "unnamed"
+		result.Metadata["agent_name"] = agentName
 	}
-	result.Metadata["agent_name"] = agentName
 
 	if llmClient == nil {
 		result.Error = fmt.Sprintf("sub-agent %q requires llm client", agentName)
@@ -129,6 +144,7 @@ func (sa *SubAgent) Execute(
 				streamFn(api.StreamChunk{
 					Type:      "tool",
 					Tool:      prefixedToolName,
+					SubAgent:  agentName,
 					Reason:    reason,
 					ToolID:    tc.ID,
 					Arguments: args,
@@ -151,11 +167,12 @@ func (sa *SubAgent) Execute(
 
 			if streamFn != nil {
 				streamFn(api.StreamChunk{
-					Type:   "tool",
-					Tool:   prefixedToolName,
-					Reason: reason,
-					ToolID: tc.ID,
-					Result: toolResult,
+					Type:     "tool",
+					Tool:     prefixedToolName,
+					SubAgent: agentName,
+					Reason:   reason,
+					ToolID:   tc.ID,
+					Result:   toolResult,
 				})
 			}
 
@@ -175,6 +192,20 @@ func (sa *SubAgent) Execute(
 		result.Summary = fmt.Sprintf("Specialist %q could not complete within %d iterations.", agentName, maxIterations)
 	}
 	return result
+}
+
+func observeSubAgentExecutionMetrics(agentName string, startedAt time.Time, result *SubAgentResult) {
+	if result == nil {
+		return
+	}
+	duration := time.Since(startedAt).Seconds()
+	result.DurationSeconds = duration
+
+	metrics.SubAgentDurationSeconds.WithLabelValues(agentName).Observe(duration)
+	metrics.SubAgentTokensUsed.WithLabelValues(agentName).Observe(float64(result.TokensUsed))
+	if strings.TrimSpace(result.Error) != "" {
+		metrics.SubAgentErrorsTotal.WithLabelValues(agentName).Inc()
+	}
 }
 
 func invokeSubAgentMCPTool(ctx context.Context, clients map[string]mcp.Client, toolName string, args map[string]any) (any, error) {

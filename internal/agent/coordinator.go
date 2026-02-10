@@ -118,6 +118,43 @@ func (m *Manager) handleChatViaSubAgents(
 			res.Metadata = map[string]string{}
 		}
 		res.Metadata["coordinator_reason"] = decision.Reason
+		if sess != nil && user != nil {
+			now := time.Now()
+			agentName := strings.TrimSpace(res.Metadata["agent_name"])
+			if agentName == "" {
+				agentName = strings.ToLower(strings.TrimSpace(name))
+			}
+			status := "ok"
+			if strings.TrimSpace(res.Error) != "" {
+				status = "error"
+			}
+			auditPayload := map[string]any{
+				"agent_name":         agentName,
+				"user_message":       userMessage,
+				"tools_used":         res.ToolsUsed,
+				"tokens_used":        res.TokensUsed,
+				"duration_seconds":   res.DurationSeconds,
+				"status":             status,
+				"coordinator_reason": decision.Reason,
+				"intent_label":       intent.Label,
+				"intent_confidence":  intent.Confidence,
+			}
+			if strings.TrimSpace(res.Error) != "" {
+				auditPayload["error"] = strings.TrimSpace(res.Error)
+			}
+			_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
+				ID:           fmt.Sprintf("%s-%d-audit-subagent-%s", sess.ID, now.UnixMilli(), agentName),
+				SessionID:    sess.ID,
+				UserID:       user.ID,
+				OrgID:        user.OrgID,
+				DashboardUID: sess.DashboardUID,
+				EventType:    "subagent_invocation",
+				ToolName:     agentName,
+				Request:      marshalAuditValue(auditPayload),
+				Response:     marshalAuditValue(map[string]any{"summary": res.Summary}),
+				CreatedAt:    now,
+			})
+		}
 		results = append(results, res)
 	}
 	if len(results) == 0 {
@@ -132,26 +169,6 @@ func (m *Manager) handleChatViaSubAgents(
 	streamFn(api.StreamChunk{Type: "token", Message: summary})
 	streamFn(api.StreamChunk{Type: "complete", Message: summary})
 	streamFn(api.StreamChunk{Type: "done"})
-
-	if sess != nil && user != nil {
-		now := time.Now()
-		_ = m.store.AddAuditEntry(ctx, &storage.AuditEntry{
-			ID:           fmt.Sprintf("%s-%d-audit-subagent", sess.ID, now.UnixMilli()),
-			SessionID:    sess.ID,
-			UserID:       user.ID,
-			OrgID:        user.OrgID,
-			DashboardUID: sess.DashboardUID,
-			EventType:    "coordinator_subagent",
-			Request: marshalAuditValue(map[string]any{
-				"decision_reason":     decision.Reason,
-				"intent_label":        intent.Label,
-				"intent_confidence":   intent.Confidence,
-				"delegated_subagents": decision.SubAgents,
-			}),
-			Response:  marshalAuditValue(results),
-			CreatedAt: now,
-		})
-	}
 
 	return summary, true
 }

@@ -120,12 +120,14 @@ func TestStreamChunk_Tool(t *testing.T) {
 	const input = `{
 		"type": "tool",
 		"tool": "alertmanager__list_alerts",
+		"subagent": "investigation",
 		"reason": "Check active alert state for the current incident.",
 		"arguments": {"state": "active"}
 	}`
 	roundTrip[StreamChunk](t, input, func(c StreamChunk) {
 		assertEqual(t, "type", c.Type, "tool")
 		assertEqual(t, "tool", c.Tool, "alertmanager__list_alerts")
+		assertEqual(t, "subagent", c.SubAgent, "investigation")
 		assertEqual(t, "reason", c.Reason, "Check active alert state for the current incident.")
 		if c.Arguments["state"] != "active" {
 			t.Errorf("arguments.state = %v, want %q", c.Arguments["state"], "active")
