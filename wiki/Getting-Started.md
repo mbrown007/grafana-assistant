@@ -2,6 +2,8 @@
 
 This guide will walk you through setting up your local development environment for the Monitoring Assistant.
 
+If you are deploying against your own Grafana instance (binary + config + KB + eval workflow), use [Operator Onboarding](Operator-Onboarding).
+
 ## Prerequisites
 
 - Go 1.25+

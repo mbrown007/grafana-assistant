@@ -1,10 +1,33 @@
 # Monitoring Assistant
 
-A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered chat sidebar. The assistant understands which dashboard you're viewing and can answer questions about panels, queries, and metrics. It connects to MCP tool servers to fetch live data from Alertmanager, Grafana APIs, and Genesys Cloud.
+A Grafana wrapper that embeds dashboards in an iframe alongside an LLM-powered chat sidebar. The assistant understands dashboard context, can call MCP tools for live evidence, and supports intent-aware prompt/tool routing for safer, faster responses.
 <img width="1919" height="947" alt="image" src="https://github.com/user-attachments/assets/bfd16a18-0f8a-404e-b8a0-0b7a062662b6" />
 
 <img width="1919" height="947" alt="image" src="https://github.com/user-attachments/assets/20f07f85-96cb-4b6e-afe2-28383a4404c0" />
 
+## What is implemented now
+
+- Intent-aware prompt construction and intent-filtered MCP tool exposure.
+- Domain-enriched tool summaries for Alertmanager alerts, Prometheus query results, and Loki log results.
+- Request budget guardrails (token/tool/cost limits) and rollout feature flags.
+- Coordinator + specialist sub-agent scaffold (dashboard and investigation specialists, gated by feature flag).
+- Strong eval pipeline: baseline runner, LLM judge scoring, deterministic guard checks, and quality gate.
+- Mock MCP fixture replay mode for deterministic evals without Docker/live Grafana.
+- Prometheus/Loki observability for prompt sizes, tool counts, budget trips, sub-agent invocation/error/duration/token usage.
+
+## New operator onboarding guide
+
+If you are setting this up on your own Grafana instance, start with:
+
+- `wiki/Operator-Onboarding.md` (end-to-end runbook: binary setup, config, KB/prompt tuning, tests, evals, rollout checks)
+
+Related deep dives:
+
+- `docs/DEPLOYMENT.md`
+- `docs/GRAFANA_CONFIG.md`
+- `docs/KB_INTEGRATION.md`
+- `docs/OBSERVABILITY.md`
+- `docs/evals/README.md`
 
 ## Prerequisites
 
@@ -94,7 +117,7 @@ This builds and starts the MCP servers, Go backend, and Vite frontend dev server
 | `make mcp-stop` | Stop all MCP servers |
 | `make kb-reindex` | Build KB index from markdown files |
 
-The three MCP servers and their default ports:
+MCP servers and their default ports:
 
 | Server | Port | Tools |
 |---|---|---|
@@ -296,11 +319,37 @@ mcp_servers/
 KB/                     Domain knowledge base (markdown sections)
 ```
 
-## Tests
+## Tests and evals
+
+Core test commands:
 
 ```bash
 make test
+make test-all
 ```
+
+Eval commands:
+
+```bash
+# Deterministic local baseline (no Docker/live Grafana required)
+make eval-baseline-mock
+
+# Live baseline against /api/chat (requires auth)
+make eval-baseline
+
+# Score baseline run
+make eval-judge RUN_ARTIFACT=tests/evals/results/baseline-<timestamp>.json
+
+# Deterministic hard-guard checks
+make eval-guard RUN_ARTIFACT=tests/evals/results/baseline-<timestamp>.json
+
+# Enforce thresholds across judge + guard reports
+make eval-quality-gate \
+  JUDGE_REPORT=tests/evals/results/judge-<timestamp>.json \
+  GUARD_REPORT=tests/evals/results/guard-<timestamp>.json
+```
+
+For complete test/eval workflow details, see `wiki/Operator-Onboarding.md` and `docs/evals/README.md`.
 
 ## Grafana configuration notes
 
