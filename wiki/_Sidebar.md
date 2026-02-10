@@ -1,4 +1,5 @@
 *   [Home](Home)
+*   [Operator Onboarding](Operator-Onboarding)
 *   [Architecture](Architecture)
 *   [Getting Started](Getting-Started)
 *   [Deployment](Deployment)

@@ -14,6 +14,10 @@ The Monitoring Assistant is a web application that wraps a Grafana instance, pro
 
 ## Quick Start
 
+For a complete operator runbook (production setup, KB/prompt tuning, tests, and evals), see:
+
+- [Operator Onboarding](Operator-Onboarding)
+
 ### Prerequisites
 
 - Go 1.25+
